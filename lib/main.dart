@@ -3,6 +3,7 @@ import 'package:cometchat_sdk/cometchat_sdk.dart';
 import 'package:my_first_app/screens/loginScreen.dart';
 
 
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   String region = "IN";

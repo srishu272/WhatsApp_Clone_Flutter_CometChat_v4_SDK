@@ -21,6 +21,7 @@ class _HomescreenState extends State<Homescreen> {
   List<Conversation> conversations = [];
   Timer? typingTimer;
   Map<String, String?> typingUsers = {};
+  Map<String, bool> onlineUsers = {};
 
   Future<void> fetchConversations() async {
     ConversationsRequest request = ConversationsRequestBuilder().build();
@@ -30,6 +31,23 @@ class _HomescreenState extends State<Homescreen> {
           setState(() {
             conversations = message;
           });
+
+          for (var conversation in message) {
+            if (conversation.conversationWith is User) {
+              String userId = (conversation.conversationWith as User).uid;
+              CometChat.getUser(
+                userId,
+                onSuccess: (User user) {
+                  setState(() {
+                    onlineUsers[user.uid] = user.status == "online";
+                  });
+                },
+                onError: (CometChatException e) {
+                  print("Error fetching user status: ${e.message}");
+                },
+              );
+            }
+          }
         },
         onError: (CometChatException excep) {},
       );
@@ -39,22 +57,6 @@ class _HomescreenState extends State<Homescreen> {
   }
 
   void updateLastMessage(BaseMessage message) {
-    /*setState(() {
-      for (var conversation in conversations) {
-        bool isRelatedConversation = false;
-        if (conversation.conversationWith is User &&
-            (conversation.conversationWith as User).uid ==
-                message.sender?.uid) {
-          conversation.lastMessage = message;
-          break;
-        } else if (conversation.conversationWith is Group &&
-            (conversation.conversationWith as Group).guid ==
-                message.receiverUid) {
-          conversation.lastMessage = message;
-          break;
-        }
-      }
-    });*/
 
     setState(() {
       for (var conversation in conversations) {
@@ -114,15 +116,18 @@ class _HomescreenState extends State<Homescreen> {
   }
 
   String getLastMessage(BaseMessage? lastMsg) {
-    if (lastMsg == null) {
-      return "";
-    } else if (lastMsg is TextMessage) {
+    if (lastMsg == null) return "";
+    if (lastMsg.parentMessageId != 0) return ""; // Ignore thread messages
+
+    if (lastMsg is TextMessage) {
       return lastMsg.text;
     } else if (lastMsg is MediaMessage) {
-      return lastMsg.attachment?.fileName ?? "";
+      return lastMsg.attachment?.fileName ?? "Media Message";
     }
     return "Unsupported message type";
   }
+
+
 
   String formatTimestamp(DateTime date) {
     DateTime now = DateTime.now();
@@ -140,6 +145,10 @@ class _HomescreenState extends State<Homescreen> {
     else {
       return "${date.day}/${date.month}/${date.year}";
     }
+  }
+
+  bool isUserOnline(String userId) {
+    return onlineUsers[userId] ?? false;
   }
 
   @override
@@ -178,10 +187,15 @@ class _HomescreenState extends State<Homescreen> {
       "HOME_SCREEN_USER_PRESENCE_LISTENER",
       HomeScreen_UserPresenceListener(
         onUserOnlineFunc: (user) {
-          setState(() {});
+          debugPrint("${user.name} is online");
+          setState(() {
+            onlineUsers[user.uid] = true;
+          });
         },
         onUserOfflineFunc: (user) {
-          setState(() {});
+          setState(() {
+            onlineUsers[user.uid] = false;
+          });
         },
       ),
     );
@@ -281,9 +295,7 @@ class _HomescreenState extends State<Homescreen> {
         ),
       ),
       body: Container(
-        decoration: BoxDecoration(
-          color: Colors.white
-        ),
+        decoration: BoxDecoration(color: Colors.white),
         child: ListView.builder(
           itemCount: conversations.length,
           itemBuilder: (context, index) {
@@ -340,8 +352,9 @@ class _HomescreenState extends State<Homescreen> {
                                 : null,
                       ),
                       if (conversation.conversationWith is User &&
-                          (conversation.conversationWith as User).status ==
-                              "online")
+                          isUserOnline(
+                            (conversation.conversationWith as User).uid,
+                          ))
                         Positioned(
                           bottom: 0,
                           right: 0,
@@ -391,7 +404,7 @@ class _HomescreenState extends State<Homescreen> {
           });
         },
         child: Container(
-          padding: EdgeInsets.symmetric(vertical: 15,horizontal: 15),
+          padding: EdgeInsets.symmetric(vertical: 15, horizontal: 15),
           decoration: BoxDecoration(
             color: Colors.teal.shade900,
             borderRadius: BorderRadius.circular(10),

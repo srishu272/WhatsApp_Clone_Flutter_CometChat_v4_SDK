@@ -5,8 +5,9 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:cometchat_sdk/cometchat_sdk.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart' hide Action;
-import 'package:url_launcher/url_launcher.dart';
-import 'package:video_player/video_player.dart';
+import 'package:my_first_app/screens/threadScreen.dart';
+import 'package:my_first_app/screens/videoPlayerScreen.dart';
+import 'package:cometchat_calls_sdk/cometchat_calls_sdk.dart';
 
 class Chatscreen extends StatefulWidget {
   const Chatscreen({super.key, required this.conversation});
@@ -249,7 +250,7 @@ class _ChatscreenState extends State<Chatscreen> {
           } else {
             messages.clear();
             messages.addAll(
-              msgs.reversed.map((msg) {
+              msgs.reversed.where((msg) => msg.parentMessageId == 0).map((msg) {
                 print(msg.deletedAt);
                 if (msg.deletedAt != null) {
                   return TextMessage(
@@ -492,7 +493,13 @@ class _ChatscreenState extends State<Chatscreen> {
     }
   }
 
-  void showOptionsForMessage(BaseMessage message) {
+  void showOptionsForMessage(
+    BaseMessage message,
+    bool isMe,
+    bool isGroupChat,
+    String formatedTimestamp,
+    Widget getMessageStatusIcon,
+  ) {
     showModalBottomSheet(
       context: context,
       builder: (context) {
@@ -542,6 +549,26 @@ class _ChatscreenState extends State<Chatscreen> {
                 ],
               ),
             ),
+            ListTile(
+              leading: Icon(Icons.reply_rounded),
+              title: Text("Reply"),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder:
+                        (context) => ThreadScreen(
+                          parentMessage: message,
+                          isMe: isMe,
+                          isGroupChat: isGroupChat,
+                          formatedTimestamp: formatedTimestamp,
+                          getMessageStatusIcon: getMessageStatusIcon,
+                        ),
+                  ),
+                );
+              },
+            ),
             if (message is TextMessage &&
                 (message.sender?.uid == loggedInUserId))
               ListTile(
@@ -584,6 +611,8 @@ class _ChatscreenState extends State<Chatscreen> {
       }
     }
   }
+
+
 
   @override
   void initState() {
@@ -795,17 +824,21 @@ class _ChatscreenState extends State<Chatscreen> {
                           : "${typingUser} is Typing...",
                       style: TextStyle(color: Colors.green, fontSize: 18),
                     ),
-                  ] else if (isUserOnline)
+                  ] else if (isUserOnline) ...[
                     Row(
                       children: [
-                        Icon(Icons.circle, color: Colors.green, size: 17),
-                        SizedBox(width: 4),
                         Text(
                           "Online",
                           style: TextStyle(color: Colors.white, fontSize: 18),
                         ),
                       ],
                     ),
+                  ] else ...[
+                    Text(
+                      "last seen ${formatTimestamp((widget.conversation.conversationWith as User).lastActiveAt!)}",
+                      style: TextStyle(color: Colors.white, fontSize: 18),
+                    ),
+                  ],
                 ],
               ),
             ],
@@ -817,6 +850,20 @@ class _ChatscreenState extends State<Chatscreen> {
           },
           icon: Icon(Icons.arrow_back, color: Colors.white),
         ),
+        actions: [
+          IconButton(
+            onPressed: (){
+
+            },
+            icon: Icon(Icons.call, color: Colors.white),
+          ),
+          IconButton(
+            onPressed: () {
+
+            },
+            icon: Icon(Icons.video_call_rounded, color: Colors.white),
+          ),
+        ],
       ),
       body: Container(
         decoration: BoxDecoration(
@@ -867,7 +914,13 @@ class _ChatscreenState extends State<Chatscreen> {
                             if (message is TextMessage) {
                               return GestureDetector(
                                 onLongPress: () {
-                                  showOptionsForMessage(message);
+                                  showOptionsForMessage(
+                                    message,
+                                    isMe,
+                                    isGroupChat,
+                                    formatTimestamp(message.sentAt!),
+                                    getMessageStatusIcon(message),
+                                  );
                                 },
                                 child: TextMessageWidget(
                                   isMe: isMe,
@@ -885,7 +938,13 @@ class _ChatscreenState extends State<Chatscreen> {
                             if (message is MediaMessage) {
                               return GestureDetector(
                                 onLongPress: () {
-                                  showOptionsForMessage(message);
+                                  showOptionsForMessage(
+                                    message,
+                                    isMe,
+                                    isGroupChat,
+                                    formatTimestamp(message.sentAt!),
+                                    getMessageStatusIcon(message),
+                                  );
                                 },
                                 child: MediaMessageWidget(
                                   isMe: isMe,
@@ -1134,6 +1193,185 @@ class TextMessageWidget extends StatelessWidget {
                 ),
               ),
             ),
+          if (message.replyCount > 0)
+            InkWell(
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder:
+                        (context) => ThreadScreen(
+                          parentMessage: message,
+                          isMe: isMe,
+                          isGroupChat: isGroupChat,
+                          formatedTimestamp: formatedTimestamp,
+                          getMessageStatusIcon: getMessageStatusIcon,
+                        ),
+                  ),
+                );
+              },
+              child: Align(
+                alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+                child: Row(
+                  mainAxisAlignment:
+                      isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+                  children: [
+                    Icon(Icons.reply_rounded),
+                    SizedBox(width: 5),
+                    message.replyCount > 1
+                        ? Text("${message.replyCount} Replies")
+                        : Text("${message.replyCount} Reply"),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class VideoMessageWidget extends StatelessWidget {
+  final String fileUrl;
+  final bool isMe;
+
+  const VideoMessageWidget({
+    super.key,
+    required this.fileUrl,
+    required this.isMe,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => VideoPlayerScreen(videoUrl: fileUrl),
+          ),
+        );
+      },
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Container(
+            width: MediaQuery.of(context).size.width * 0.7,
+            height: 180,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              // color: Colors.black,
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: Container(color: Colors.black),
+            ),
+          ),
+
+          Icon(Icons.play_circle_fill, size: 50, color: Colors.white),
+        ],
+      ),
+    );
+  }
+}
+
+class AudioMessageWidget extends StatefulWidget {
+  final String fileUrl;
+  final bool isMe;
+
+  const AudioMessageWidget({
+    super.key,
+    required this.fileUrl,
+    required this.isMe,
+  });
+
+  @override
+  State<AudioMessageWidget> createState() => _AudioMessageWidgetState();
+}
+
+class _AudioMessageWidgetState extends State<AudioMessageWidget> {
+  final AudioPlayer _audioPlayer = AudioPlayer();
+  bool _isPlaying = false;
+  Duration _duration = Duration.zero;
+  Duration _position = Duration.zero;
+
+  @override
+  void initState() {
+    super.initState();
+    _audioPlayer.onDurationChanged.listen((Duration d) {
+      setState(() {
+        _duration = d;
+      });
+    });
+
+    _audioPlayer.onPositionChanged.listen((Duration p) {
+      setState(() {
+        _position = p;
+      });
+    });
+
+    _audioPlayer.onPlayerComplete.listen((event) {
+      setState(() {
+        _isPlaying = false;
+        _position = Duration.zero;
+      });
+    });
+  }
+
+  void _togglePlayPause() async {
+    if (_isPlaying) {
+      await _audioPlayer.pause();
+    } else {
+      await _audioPlayer.play(UrlSource(widget.fileUrl));
+    }
+    setState(() {
+      _isPlaying = !_isPlaying;
+    });
+  }
+
+  @override
+  void dispose() {
+    _audioPlayer.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: MediaQuery.of(context).size.width * 0.7,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          GestureDetector(
+            onTap: _togglePlayPause,
+            child: Icon(
+              _isPlaying ? Icons.pause_circle_filled : Icons.play_circle_fill,
+              color: widget.isMe ? Colors.grey.shade300 : Colors.teal.shade800,
+              size: 32,
+            ),
+          ),
+          SizedBox(width: 10),
+          Expanded(
+            child: Slider(
+              value: _position.inSeconds.toDouble(),
+              min: 0,
+              max: _duration.inSeconds.toDouble(),
+              onChanged: (value) async {
+                await _audioPlayer.seek(Duration(seconds: value.toInt()));
+              },
+              activeColor:
+                  widget.isMe ? Colors.grey.shade300 : Colors.teal.shade800,
+              inactiveColor: Colors.grey,
+            ),
+          ),
+          SizedBox(width: 5),
+          Text(
+            "${_position.inMinutes}:${(_position.inSeconds % 60).toString().padLeft(2, '0')}",
+            style: TextStyle(
+              fontSize: 12,
+              color: widget.isMe ? Colors.grey.shade300 : Colors.teal.shade800,
+            ),
+          ),
         ],
       ),
     );
@@ -1249,6 +1487,37 @@ class _MediaMessageWidgetState extends State<MediaMessageWidget> {
                 ),
               ),
             ),
+          if (widget.message.replyCount > 0)
+            InkWell(
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder:
+                        (context) => ThreadScreen(
+                          parentMessage: widget.message,
+                          isMe: widget.isMe,
+                          isGroupChat: widget.isGroupChat,
+                          formatedTimestamp: widget.formattedTimestamp,
+                          getMessageStatusIcon: widget.getMessageStatusIcon,
+                        ),
+                  ),
+                );
+              },
+              child: Align(
+                alignment: Alignment.bottomRight,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    Icon(Icons.reply_rounded),
+                    SizedBox(width: 5),
+                    widget.message.replyCount > 1
+                        ? Text("${widget.message.replyCount} Replies")
+                        : Text("${widget.message.replyCount} Reply"),
+                  ],
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -1332,194 +1601,6 @@ class _MediaMessageWidgetState extends State<MediaMessageWidget> {
 
   Widget _buildAudioMessage(String fileUrl, bool isMe) {
     return AudioMessageWidget(fileUrl: fileUrl, isMe: isMe);
-  }
-}
-
-class VideoMessageWidget extends StatefulWidget {
-  final String fileUrl;
-  final bool isMe;
-
-  const VideoMessageWidget({required this.fileUrl, required this.isMe});
-
-  @override
-  State<VideoMessageWidget> createState() => _VideoMessageWidgetState();
-}
-
-class _VideoMessageWidgetState extends State<VideoMessageWidget> {
-  VideoPlayerController? _videoPlayerController;
-  bool _isPlaying = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _initializeVideo();
-  }
-
-  Future<void> _initializeVideo() async {
-    _videoPlayerController = VideoPlayerController.network(widget.fileUrl)
-      ..initialize()
-          .then((_) {
-            setState(() {});
-          })
-          .catchError((error) {
-            debugPrint("Video initialization error: $error");
-          });
-  }
-
-  void _togglePlayPause() {
-    if (_videoPlayerController == null) return;
-
-    if (_videoPlayerController!.value.isPlaying) {
-      _videoPlayerController!.pause();
-    } else {
-      _videoPlayerController!.play();
-    }
-
-    setState(() {
-      _isPlaying = _videoPlayerController!.value.isPlaying;
-    });
-  }
-
-  @override
-  void dispose() {
-    _videoPlayerController?.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: _togglePlayPause,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          Container(
-            width: MediaQuery.of(context).size.width * 0.7,
-            height: 180,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(10),
-              // color: Colors.black,
-            ),
-            child:
-                _videoPlayerController != null &&
-                        _videoPlayerController!.value.isInitialized
-                    ? ClipRRect(
-                      borderRadius: BorderRadius.circular(10),
-                      child: AspectRatio(
-                        aspectRatio: _videoPlayerController!.value.aspectRatio,
-                        child: VideoPlayer(_videoPlayerController!),
-                      ),
-                    )
-                    : Center(child: CircularProgressIndicator()),
-          ),
-          if (!_isPlaying)
-            Icon(Icons.play_circle_fill, size: 50, color: Colors.white),
-        ],
-      ),
-    );
-  }
-}
-
-class AudioMessageWidget extends StatefulWidget {
-  final String fileUrl;
-  final bool isMe;
-
-  const AudioMessageWidget({
-    super.key,
-    required this.fileUrl,
-    required this.isMe,
-  });
-
-  @override
-  State<AudioMessageWidget> createState() => _AudioMessageWidgetState();
-}
-
-class _AudioMessageWidgetState extends State<AudioMessageWidget> {
-  final AudioPlayer _audioPlayer = AudioPlayer();
-  bool _isPlaying = false;
-  Duration _duration = Duration.zero;
-  Duration _position = Duration.zero;
-
-  @override
-  void initState() {
-    super.initState();
-    _audioPlayer.onDurationChanged.listen((Duration d) {
-      setState(() {
-        _duration = d;
-      });
-    });
-
-    _audioPlayer.onPositionChanged.listen((Duration p) {
-      setState(() {
-        _position = p;
-      });
-    });
-
-    _audioPlayer.onPlayerComplete.listen((event) {
-      setState(() {
-        _isPlaying = false;
-        _position = Duration.zero;
-      });
-    });
-  }
-
-  void _togglePlayPause() async {
-    if (_isPlaying) {
-      await _audioPlayer.pause();
-    } else {
-      await _audioPlayer.play(UrlSource(widget.fileUrl));
-    }
-    setState(() {
-      _isPlaying = !_isPlaying;
-    });
-  }
-
-  @override
-  void dispose() {
-    _audioPlayer.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: MediaQuery.of(context).size.width * 0.7,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          GestureDetector(
-            onTap: _togglePlayPause,
-            child: Icon(
-              _isPlaying ? Icons.pause_circle_filled : Icons.play_circle_fill,
-              color: widget.isMe ? Colors.grey.shade300 : Colors.teal.shade800,
-              size: 32,
-            ),
-          ),
-          SizedBox(width: 10),
-          Expanded(
-            child: Slider(
-              value: _position.inSeconds.toDouble(),
-              min: 0,
-              max: _duration.inSeconds.toDouble(),
-              onChanged: (value) async {
-                await _audioPlayer.seek(Duration(seconds: value.toInt()));
-              },
-              activeColor:
-                  widget.isMe ? Colors.grey.shade300 : Colors.teal.shade800,
-              inactiveColor: Colors.grey,
-            ),
-          ),
-          SizedBox(width: 5),
-          Text(
-            "${_position.inMinutes}:${(_position.inSeconds % 60).toString().padLeft(2, '0')}",
-            style: TextStyle(
-              fontSize: 12,
-              color: widget.isMe ? Colors.grey.shade300 : Colors.teal.shade800,
-            ),
-          ),
-        ],
-      ),
-    );
   }
 }
 
@@ -1634,3 +1715,4 @@ class ChatScreen_UserPresenceListener with UserListener {
     onUserOfflineFunc(user);
   }
 }
+
