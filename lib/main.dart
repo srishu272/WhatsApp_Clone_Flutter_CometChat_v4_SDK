@@ -3,7 +3,7 @@ import 'package:cometchat_sdk/cometchat_sdk.dart';
 import 'package:my_first_app/screens/loginScreen.dart';
 
 
-
+final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   String region = "IN";
@@ -35,6 +35,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      scaffoldMessengerKey: scaffoldMessengerKey,
       debugShowCheckedModeBanner: false,
       home: const Loginscreen(),
     );

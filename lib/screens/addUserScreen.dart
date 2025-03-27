@@ -75,8 +75,10 @@ class _AdduserscreenState extends State<Adduserscreen> {
                         context,
                         MaterialPageRoute(
                           builder:
-                              (context) =>
-                                  Chatscreen(conversation: conversation),
+                              (context) => Chatscreen(
+                                conversation: conversation,
+                                onNewMessageSent: (BaseMessage message) {},
+                              ),
                         ),
                       );
                     },
@@ -97,7 +99,11 @@ class _AdduserscreenState extends State<Adduserscreen> {
                         ),
                         leading: CircleAvatar(
                           radius: 25,
-                          backgroundImage: NetworkImage(userData.avatar!),
+                          backgroundImage:
+                              userData.avatar != null &&
+                                      userData.avatar!.isNotEmpty
+                                  ? NetworkImage(userData.avatar!)
+                                  : null,
                         ),
                         title: Text(
                           userData.name,

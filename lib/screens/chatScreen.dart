@@ -5,14 +5,23 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:cometchat_sdk/cometchat_sdk.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart' hide Action;
+import 'package:my_first_app/screens/calling/outgoingCallScreen.dart';
+import 'package:my_first_app/screens/groupDetailsScreen.dart';
 import 'package:my_first_app/screens/threadScreen.dart';
 import 'package:my_first_app/screens/videoPlayerScreen.dart';
 import 'package:cometchat_calls_sdk/cometchat_calls_sdk.dart';
 
+import '../listeners/groupMembersListener.dart';
+
 class Chatscreen extends StatefulWidget {
-  const Chatscreen({super.key, required this.conversation});
+  const Chatscreen({
+    super.key,
+    required this.conversation,
+    required this.onNewMessageSent,
+  });
 
   final Conversation conversation;
+  final Function(BaseMessage) onNewMessageSent;
 
   @override
   State<Chatscreen> createState() => _ChatscreenState();
@@ -46,7 +55,7 @@ class _ChatscreenState extends State<Chatscreen> {
 
     typingTimer?.cancel();
     // Set a timer to stop typing after a delay
-    typingTimer = Timer(Duration(seconds: 3), () {
+    typingTimer = Timer(Duration(seconds: 1), () {
       endTyping();
     });
   }
@@ -238,7 +247,8 @@ class _ChatscreenState extends State<Chatscreen> {
                     widget.conversation.conversationWith is Group
                         ? (widget.conversation.conversationWith as Group).guid
                         : null
-                ..limit = messageLimit)
+                ..limit = messageLimit
+                ..hideReplies = true)
               .build();
     }
 
@@ -250,7 +260,7 @@ class _ChatscreenState extends State<Chatscreen> {
           } else {
             messages.clear();
             messages.addAll(
-              msgs.reversed.where((msg) => msg.parentMessageId == 0).map((msg) {
+              msgs.reversed.map((msg) {
                 print(msg.deletedAt);
                 if (msg.deletedAt != null) {
                   return TextMessage(
@@ -566,7 +576,10 @@ class _ChatscreenState extends State<Chatscreen> {
                           getMessageStatusIcon: getMessageStatusIcon,
                         ),
                   ),
-                );
+                ).then((_) {
+                  fetchMessages();
+                  fetchUserPresence();
+                });
               },
             ),
             if (message is TextMessage &&
@@ -603,16 +616,40 @@ class _ChatscreenState extends State<Chatscreen> {
       if (message.sender?.uid != loggedInUserId) {
         CometChat.markAsRead(
           message,
-          onSuccess: (_) {},
+          onSuccess: (String updatedMessage) {
+            debugPrint("Message ${updatedMessage} marked as read");
+          },
           onError: (CometChatException e) {
-            debugPrint("Error marking message as read");
+            debugPrint("Error marking message as read: ${e.message}");
           },
         );
       }
     }
   }
 
-
+  void showKickOrBanAlert(String message) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text("Alert"),
+          content: Text(message),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context); // Close the dialog
+                Navigator.popUntil(
+                  context,
+                  (route) => route.isFirst,
+                ); // Navigate to home screen
+              },
+              child: Text("OK"),
+            ),
+          ],
+        );
+      },
+    );
+  }
 
   @override
   void initState() {
@@ -627,41 +664,73 @@ class _ChatscreenState extends State<Chatscreen> {
     fetchUserPresence();
     fetchMessages();
     markMessagesAsRead(messages);
+
+    CometChat.addGroupListener(
+      "GROUP_LISTENER",
+      GroupMemberListener(
+        onMemberAdded: (User addedUser, Group addedTo) {
+          fetchMessages();
+        },
+        onMemberKicked: (User kickedUser, User kickedBy, Group kickedFrom) {
+          if (kickedUser.uid == loggedInUserId) {
+            showKickOrBanAlert("You have been kicked from the group.");
+          } else {
+            fetchMessages();
+          }
+        },
+        onMemberLeft: (User leftUser, Group leftGroup) {
+          fetchMessages();
+        },
+        onMemberBanned: (User bannedUser, User bannedBy, Group banned) {
+          if (bannedUser.uid == loggedInUserId) {
+            showKickOrBanAlert("You have been kicked from the group.");
+          } else {
+            fetchMessages();
+          }
+        },
+      ),
+    );
     CometChat.addMessageListener(
       "CHAT_SCREEN_LISTENER",
       ChatMessageListener(
         onNewTextMessage: (TextMessage message) {
-          if ((widget.conversation.conversationWith is User &&
-                  message.sender?.uid ==
-                      (widget.conversation.conversationWith as User).uid) ||
-              (widget.conversation.conversationWith is Group &&
-                  message.receiverUid ==
-                      (widget.conversation.conversationWith as Group).guid)) {
-            setState(() {
-              messages.insert(0, message);
-            });
+          if (message.parentMessageId == 0) {
+            if ((widget.conversation.conversationWith is User &&
+                    message.sender?.uid ==
+                        (widget.conversation.conversationWith as User).uid) ||
+                (widget.conversation.conversationWith is Group &&
+                    message.receiverUid ==
+                        (widget.conversation.conversationWith as Group).guid)) {
+              setState(() {
+                messages.insert(0, message);
+              });
 
-            markMessagesAsRead([message]);
+              markMessagesAsRead([message]);
+            }
           }
         },
         onNewMediaMessage: (MediaMessage message) {
-          if ((widget.conversation.conversationWith is User &&
-                  message.sender?.uid ==
-                      (widget.conversation.conversationWith as User).uid) ||
-              (widget.conversation.conversationWith is Group &&
-                  message.receiverUid ==
-                      (widget.conversation.conversationWith as Group).guid)) {
-            setState(() {
-              messages.insert(0, message);
-            });
-            markMessagesAsRead([message]);
+          if (message.parentMessageId == 0) {
+            if ((widget.conversation.conversationWith is User &&
+                    message.sender?.uid ==
+                        (widget.conversation.conversationWith as User).uid) ||
+                (widget.conversation.conversationWith is Group &&
+                    message.receiverUid ==
+                        (widget.conversation.conversationWith as Group).guid)) {
+              setState(() {
+                messages.insert(0, message);
+              });
+              markMessagesAsRead([message]);
+            }
           }
         },
         onMessageDelivered: (int messageId) {
+          debugPrint("Updating delivered status for message ID: $messageId");
           setState(() {
             for (var msg in messages) {
               if (msg.id == messageId) {
-                msg.deletedAt = DateTime.now();
+                msg.deliveredAt = DateTime.now();
+                debugPrint("Message ${msg.id} delivered at ${msg.deliveredAt}");
               }
             }
           });
@@ -676,29 +745,41 @@ class _ChatscreenState extends State<Chatscreen> {
           });
         },
         onTypingStartedFunc: (TypingIndicator typingIndicator) {
-          if ((widget.conversation.conversationWith is User &&
-                  typingIndicator.sender.uid ==
-                      (widget.conversation.conversationWith as User).uid) ||
-              (widget.conversation.conversationWith is Group &&
-                  typingIndicator.sender.uid ==
-                      (widget.conversation.conversationWith as Group).guid)) {
+          if (widget.conversation.conversationWith is User) {
+            // Direct chat: check if the sender is the same user
+            if (typingIndicator.sender.uid ==
+                (widget.conversation.conversationWith as User).uid) {
+              setState(() {
+                typingUser = typingIndicator.sender.name;
+              });
+            }
+          } else if (widget.conversation.conversationWith is Group) {
+            // Group chat: print the name of the user who is typing
             setState(() {
               typingUser = typingIndicator.sender.name;
             });
+            print("${typingIndicator.sender.name} is typing...");
           }
         },
+
         onTypingEndedFunc: (TypingIndicator typingIndicator) {
-          if ((widget.conversation.conversationWith is User &&
-                  typingIndicator.sender.uid ==
-                      (widget.conversation.conversationWith as User).uid) ||
-              (widget.conversation.conversationWith is Group &&
-                  typingIndicator.sender.uid ==
-                      (widget.conversation.conversationWith as Group).guid)) {
+          if (widget.conversation.conversationWith is User) {
+            // Direct chat: check if the sender is the same user
+            if (typingIndicator.sender.uid ==
+                (widget.conversation.conversationWith as User).uid) {
+              setState(() {
+                typingUser = null;
+              });
+            }
+          } else if (widget.conversation.conversationWith is Group) {
+            // Group chat: print the name of the user who is typing
             setState(() {
               typingUser = null;
             });
+            print("${typingIndicator.sender.name} is typing...");
           }
         },
+
         onMessageDelete: (BaseMessage deletedMessage) {
           setState(() {
             for (int i = 0; i < messages.length; i++) {
@@ -718,7 +799,14 @@ class _ChatscreenState extends State<Chatscreen> {
           });
         },
         onMessageEdit: (BaseMessage editedMessage) {
-          setState(() {});
+          setState(() {
+            for (int i = 0; i < messages.length; i++) {
+              if (messages[i].id == editedMessage.id) {
+                messages[i] = editedMessage;
+                break;
+              }
+            }
+          });
         },
         onMessageReactionAddition: (ReactionEvent reactionEvent) {
           debugPrint("onMessageReactionAddition");
@@ -738,7 +826,6 @@ class _ChatscreenState extends State<Chatscreen> {
         },
       ),
     );
-
     CometChat.addUserListener(
       "CHAT_SCREEN_USER_PRESENCE_LISTENER",
       ChatScreen_UserPresenceListener(
@@ -774,6 +861,7 @@ class _ChatscreenState extends State<Chatscreen> {
   void dispose() {
     super.dispose();
     CometChat.removeMessageListener("CHAT_SCREEN_LISTENER");
+    CometChat.removeGroupListener("GROUP_LISTENER");
   }
 
   @override
@@ -781,67 +869,137 @@ class _ChatscreenState extends State<Chatscreen> {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.teal.shade900,
-        title: Padding(
-          padding: const EdgeInsets.only(bottom: 10),
-          child: Row(
-            children: [
-              Stack(
-                children: [
-                  CircleAvatar(
-                    radius: 20,
-                    backgroundImage:
-                        widget.conversation.conversationWith is User &&
-                                (widget.conversation.conversationWith as User)
-                                        .avatar !=
-                                    null
-                            ? NetworkImage(
-                              (widget.conversation.conversationWith as User)
-                                  .avatar!,
-                            )
-                            : null,
-                    child:
-                        widget.conversation.conversationWith is Group
-                            ? Icon(Icons.group, color: Colors.teal.shade500)
-                            : null,
-                  ),
-                ],
-              ),
-              SizedBox(width: 20),
-              Column(
-                mainAxisAlignment: MainAxisAlignment.start,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    widget.conversation.conversationWith is User
-                        ? (widget.conversation.conversationWith as User).name
-                        : (widget.conversation.conversationWith as Group).name,
-                    style: TextStyle(fontSize: 25, color: Colors.white),
-                  ),
-                  if (typingUser != null) ...[
-                    Text(
+        title: InkWell(
+          onTap:
+              widget.conversation.conversationWith is Group
+                  ? () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder:
+                            (context) => GroupDetailsScreen(
+                              group:
+                                  widget.conversation.conversationWith as Group,
+                            ),
+                      ),
+                    ).then((_) {
+                      fetchMessages();
+                      fetchUserPresence();
+                    });
+                  }
+                  : () {},
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  backgroundImage:
                       widget.conversation.conversationWith is User
-                          ? "Typing...."
-                          : "${typingUser} is Typing...",
-                      style: TextStyle(color: Colors.green, fontSize: 18),
+                          ? (widget.conversation.conversationWith as User)
+                                          .avatar !=
+                                      null &&
+                                  (widget.conversation.conversationWith as User)
+                                      .avatar!
+                                      .isNotEmpty
+                              ? NetworkImage(
+                                (widget.conversation.conversationWith as User)
+                                    .avatar!,
+                              )
+                              : null
+                          : (widget.conversation.conversationWith as Group)
+                                      .icon !=
+                                  null &&
+                              (widget.conversation.conversationWith as Group)
+                                  .icon!
+                                  .isNotEmpty
+                          ? NetworkImage(
+                            (widget.conversation.conversationWith as Group)
+                                .icon!,
+                          )
+                          : null,
+                  child:
+                      (widget.conversation.conversationWith is User &&
+                                  ((widget.conversation.conversationWith
+                                                  as User)
+                                              .avatar ==
+                                          null ||
+                                      (widget.conversation.conversationWith
+                                              as User)
+                                          .avatar!
+                                          .isEmpty)) ||
+                              (widget.conversation.conversationWith is Group &&
+                                  ((widget.conversation.conversationWith
+                                                  as Group)
+                                              .icon ==
+                                          null ||
+                                      (widget.conversation.conversationWith
+                                              as Group)
+                                          .icon!
+                                          .isEmpty))
+                          ? Icon(
+                            widget.conversation.conversationWith is User
+                                ? Icons.person
+                                : Icons.group,
+                            color: Colors.white,
+                          )
+                          : null,
+                ),
+
+                SizedBox(width: 20),
+                Column(
+                  mainAxisAlignment: MainAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(
+                      width: MediaQuery.of(context).size.width * 0.4,
+                      child: Text(
+                        widget.conversation.conversationWith is User
+                            ? (widget.conversation.conversationWith as User)
+                                .name
+                            : (widget.conversation.conversationWith as Group)
+                                .name,
+                        style: TextStyle(
+                          fontSize: 25,
+                          color: Colors.white,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
                     ),
-                  ] else if (isUserOnline) ...[
-                    Row(
-                      children: [
+                    if (typingUser != null) ...[
+                      SizedBox(
+                        width: MediaQuery.of(context).size.width * 0.4,
+                        child: Text(
+                          widget.conversation.conversationWith is User
+                              ? "Typing...."
+                              : "${typingUser} is Typing...",
+                          style: TextStyle(
+                            color: Colors.green,
+                            fontSize: 18,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ),
+                    ] else if (isUserOnline) ...[
+                      Row(
+                        children: [
+                          Text(
+                            "Online",
+                            style: TextStyle(color: Colors.white, fontSize: 18),
+                          ),
+                        ],
+                      ),
+                    ] else ...[
+                      if (widget.conversation.conversationWith is User)
                         Text(
-                          "Online",
+                          "last seen ${formatTimestamp((widget.conversation.conversationWith as User).lastActiveAt!)}" ??
+                              "",
                           style: TextStyle(color: Colors.white, fontSize: 18),
                         ),
-                      ],
-                    ),
-                  ] else ...[
-                    Text(
-                      "last seen ${formatTimestamp((widget.conversation.conversationWith as User).lastActiveAt!)}",
-                      style: TextStyle(color: Colors.white, fontSize: 18),
-                    ),
+                    ],
                   ],
-                ],
-              ),
-            ],
+                ),
+              ],
+            ),
           ),
         ),
         leading: IconButton(
@@ -852,14 +1010,38 @@ class _ChatscreenState extends State<Chatscreen> {
         ),
         actions: [
           IconButton(
-            onPressed: (){
-
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder:
+                      (context) => OutgoingCallScreen(
+                        conversation: widget.conversation,
+                        callType: "audio",
+                      ),
+                ),
+              ).then((_) {
+                fetchMessages();
+                fetchUserPresence();
+              });
             },
             icon: Icon(Icons.call, color: Colors.white),
           ),
           IconButton(
             onPressed: () {
-
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder:
+                      (context) => OutgoingCallScreen(
+                        conversation: widget.conversation,
+                        callType: "video",
+                      ),
+                ),
+              ).then((_) {
+                fetchMessages();
+                fetchUserPresence();
+              });
             },
             icon: Icon(Icons.video_call_rounded, color: Colors.white),
           ),
@@ -960,7 +1142,50 @@ class _ChatscreenState extends State<Chatscreen> {
                               );
                             }
                             if (message is Action) {
-                              return SizedBox();
+                              String actionMessage = message.message!;
+                              if (actionMessage == "Message Deleted") {
+                                return SizedBox();
+                              }
+                              if (actionMessage == "Message Edited") {
+                                return SizedBox();
+                              }
+
+                              return Center(
+                                child: Container(
+                                  margin: EdgeInsets.symmetric(
+                                    vertical: 5,
+                                    horizontal: 10,
+                                  ),
+                                  padding: EdgeInsets.symmetric(
+                                    vertical: 8,
+                                    horizontal: 10,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.amber.shade100,
+                                    // WhatsApp-style gray background
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: Text(
+                                    message.message ?? "System message",
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      color: Colors.black54,
+                                      fontSize: 14,
+                                      fontStyle: FontStyle.italic,
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }
+                            if (message is Call) {
+                              return CallMessageWidget(
+                                isMe: isMe,
+                                isGroupChat: isGroupChat,
+                                callType: message.type,
+                                formattedTimestamp: formatTimestamp(
+                                  message.initiatedAt!,
+                                ),
+                              );
                             }
 
                             return Center(child: Text("No Messages...."));
@@ -1226,6 +1451,78 @@ class TextMessageWidget extends StatelessWidget {
               ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+class CallMessageWidget extends StatelessWidget {
+  const CallMessageWidget({
+    super.key,
+    required this.isMe,
+    required this.isGroupChat,
+    required this.callType,
+    required this.formattedTimestamp,
+  });
+
+  final bool isMe;
+  final bool isGroupChat;
+  final String callType;
+  final String formattedTimestamp;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: EdgeInsets.symmetric(vertical: 5, horizontal: 10),
+      child: Align(
+        alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+        child: Container(
+          padding: EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: isMe ? Colors.teal.shade800 : Colors.grey.shade300,
+            borderRadius:
+                isMe
+                    ? BorderRadius.only(
+                      topLeft: Radius.circular(10),
+                      topRight: Radius.circular(10),
+                      bottomLeft: Radius.circular(10),
+                      bottomRight: Radius.zero,
+                    )
+                    : BorderRadius.only(
+                      topLeft: Radius.circular(10),
+                      topRight: Radius.circular(10),
+                      bottomLeft: Radius.zero,
+                      bottomRight: Radius.circular(10),
+                    ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    callType == "video" ? Icons.videocam : Icons.call,
+                    color: isMe ? Colors.white : Colors.black,
+                  ),
+                  SizedBox(width: 10),
+                  Text(
+                    callType == "video" ? "Video Call" : "Audio Call",
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: isMe ? Colors.white : Colors.black,
+                    ),
+                  ),
+                ],
+              ),
+              SizedBox(height: 10),
+              Text(
+                formattedTimestamp,
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -1715,4 +2012,3 @@ class ChatScreen_UserPresenceListener with UserListener {
     onUserOfflineFunc(user);
   }
 }
-

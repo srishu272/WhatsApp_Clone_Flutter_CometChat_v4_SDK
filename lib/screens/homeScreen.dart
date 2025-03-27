@@ -1,12 +1,21 @@
 import 'dart:async';
 
+import 'package:cometchat_calls_sdk/builder/call_settings.dart';
+import 'package:cometchat_calls_sdk/helper/cometchatcalls_exception.dart';
+import 'package:cometchat_calls_sdk/main/cometchatcalls.dart';
+import 'package:cometchat_calls_sdk/model/generate_token.dart';
 import 'package:cometchat_sdk/cometchat_sdk.dart';
 import 'package:cometchat_sdk/exception/cometchat_exception.dart';
 import 'package:cometchat_sdk/main/cometchat.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Action;
+import 'package:my_first_app/listeners/callListerner.dart';
 import 'package:my_first_app/screens/addUserScreen.dart';
+import 'package:my_first_app/screens/calling/incomingCallScreen.dart';
 import 'package:my_first_app/screens/chatScreen.dart';
 import 'package:my_first_app/screens/loginScreen.dart';
+
+import '../listeners/groupMembersListener.dart';
+import 'calling/ongoingCallScreen.dart';
 
 class Homescreen extends StatefulWidget {
   const Homescreen({super.key});
@@ -22,42 +31,51 @@ class _HomescreenState extends State<Homescreen> {
   Timer? typingTimer;
   Map<String, String?> typingUsers = {};
   Map<String, bool> onlineUsers = {};
+  bool isCallScreenOpen = false;
+  bool isCallSessionStarted = false;
 
   Future<void> fetchConversations() async {
     ConversationsRequest request = ConversationsRequestBuilder().build();
-    try {
-      List<Conversation> fetchedConversations = await request.fetchNext(
-        onSuccess: (List<Conversation> message) {
-          setState(() {
-            conversations = message;
-          });
 
-          for (var conversation in message) {
-            if (conversation.conversationWith is User) {
-              String userId = (conversation.conversationWith as User).uid;
-              CometChat.getUser(
-                userId,
-                onSuccess: (User user) {
-                  setState(() {
-                    onlineUsers[user.uid] = user.status == "online";
-                  });
-                },
-                onError: (CometChatException e) {
-                  print("Error fetching user status: ${e.message}");
-                },
-              );
-            }
-          }
-        },
-        onError: (CometChatException excep) {},
-      );
-    } catch (e) {
-      print("Error fetching conversations: $e");
-    }
+    request.fetchNext(
+      onSuccess: (List<Conversation> fetchedConversations) async {
+        // Extract user IDs from the fetched conversations
+        List<String> userIds = fetchedConversations
+            .where((conv) => conv.conversationWith is User)
+            .map((conv) => (conv.conversationWith as User).uid)
+            .toList();
+
+        // Create a temporary map to store fetched user statuses
+        Map<String, bool> tempOnlineUsers = {};
+
+        // Fetch user statuses in parallel
+        if (userIds.isNotEmpty) {
+          await Future.wait(userIds.map(
+                (userId) => CometChat.getUser(
+              userId,
+              onSuccess: (User user) {
+                tempOnlineUsers[user.uid] = user.status == "online";
+              },
+              onError: (CometChatException e) {
+                debugPrint("Error fetching user status: ${e.message}");
+              },
+            ),
+          ));
+        }
+
+        // Update UI in a single setState call
+        setState(() {
+          conversations = fetchedConversations;
+          onlineUsers = tempOnlineUsers;
+        });
+      },
+      onError: (CometChatException e) {
+        debugPrint("Error fetching conversations: ${e.message}");
+      },
+    );
   }
 
   void updateLastMessage(BaseMessage message) {
-
     setState(() {
       for (var conversation in conversations) {
         // Check if the current conversation is related to the message
@@ -116,18 +134,28 @@ class _HomescreenState extends State<Homescreen> {
   }
 
   String getLastMessage(BaseMessage? lastMsg) {
-    if (lastMsg == null) return "";
-    if (lastMsg.parentMessageId != 0) return ""; // Ignore thread messages
+    // if (lastMsg == null) return "";
+    if (lastMsg?.parentMessageId != 0) return ""; // Ignore thread messages
 
     if (lastMsg is TextMessage) {
       return lastMsg.text;
     } else if (lastMsg is MediaMessage) {
       return lastMsg.attachment?.fileName ?? "Media Message";
+    } else if (lastMsg is Action) {
+      // Check for call actions
+      if (lastMsg.action == "call_started") {
+        return "Call Started";
+      } else if (lastMsg.action == "call_ended") {
+        return "Call Ended";
+      } else if (lastMsg.action == "call_missed") {
+        return "Missed Call";
+      } else if (lastMsg.action == "message_deleted") {
+        return "This message was deleted";
+      }
+      return lastMsg.message!;
     }
     return "Unsupported message type";
   }
-
-
 
   String formatTimestamp(DateTime date) {
     DateTime now = DateTime.now();
@@ -151,6 +179,32 @@ class _HomescreenState extends State<Homescreen> {
     return onlineUsers[userId] ?? false;
   }
 
+  void updateConversationList(BaseMessage message) {
+    setState(() {
+      // Find the conversation in the list
+      int index = conversations.indexWhere((c) {
+        if (c.conversationWith is User) {
+          return (c.conversationWith as User).uid == message.sender?.uid ||
+              (c.conversationWith as User).uid == message.receiverUid;
+        } else if (c.conversationWith is Group) {
+          return (c.conversationWith as Group).guid == message.receiverUid;
+        }
+        return false;
+      });
+
+      if (index != -1) {
+        // Move conversation to the top and update last message
+        Conversation updatedConversation = conversations[index];
+        updatedConversation.lastMessage = message;
+        conversations.removeAt(index);
+        conversations.insert(0, updatedConversation);
+      } else {
+        // If the conversation is not found, fetch new conversations
+        fetchConversations();
+      }
+    });
+  }
+
   @override
   void initState() {
     super.initState();
@@ -158,19 +212,33 @@ class _HomescreenState extends State<Homescreen> {
     fetchConversations();
 
     CometChat.addMessageListener(
-      "HOME_SCREEN_LISTENER",
+      "MESSAGE_LISTENER",
       HomeScreenMessageListener(
         onNewTextMessage: (TextMessage message) {
           updateLastMessage(message);
+          updateConversationList(message);
         },
-        onTypingStartedFunc: (String userId) {
+        onNewMediaMessage: (MediaMessage mediaMessage) {
+          updateLastMessage(mediaMessage);
+          updateConversationList(mediaMessage);
+        },
+        onTypingStartedFunc: (TypingIndicator typingIndicator) {
           setState(() {
-            typingUsers[userId] = "Typing...";
+            if (typingIndicator.receiverType == CometChatReceiverType.user) {
+              // Direct message, show only "Typing..."
+              typingUsers[typingIndicator.receiverId] = "Typing...";
+            } else if (typingIndicator.receiverType ==
+                CometChatReceiverType.group) {
+              // Group message, show "User is typing..."
+              typingUsers[typingIndicator.receiverId] =
+                  "${typingIndicator.sender.name} is typing...";
+            }
           });
         },
-        onTypingEndedFunc: (String userId) {
+
+        onTypingEndedFunc: (TypingIndicator typingIndicator) {
           setState(() {
-            typingUsers.remove(userId);
+            typingUsers.remove(typingIndicator.receiverId);
           });
         },
         onMessageDelete: (BaseMessage message) {
@@ -199,13 +267,93 @@ class _HomescreenState extends State<Homescreen> {
         },
       ),
     );
+
+    CometChat.addCallListener(
+      "CALL_LISTENER",
+      CallEventListener(
+        listenerId: "CALL_LISTENER",
+        onIncomingCallReceivedFunc: (Call call) {
+          if (!isCallScreenOpen) {
+            isCallScreenOpen = true;
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder:
+                    (context) => IncomingCallScreen(
+                      user: call.sender!,
+                      sessionID: call.sessionId!,
+                    ),
+              ),
+            ).then((_) => isCallScreenOpen = false);
+          }
+        },
+        onIncomingCallCancelledFunc: (Call call) {
+          Navigator.pop(context);
+        },
+        onOutgoingCallAcceptedFunc: (Call call) async {
+          if (!isCallSessionStarted) {
+            isCallSessionStarted = true;
+
+            debugPrint(call.sessionId);
+            String? userAuthToken =
+                await CometChat.getUserAuthToken(); //Logged in user auth token
+
+            CometChatCalls.generateToken(
+              call.sessionId!,
+              userAuthToken!,
+              onSuccess: (GenerateToken generateToken) {
+                debugPrint("Success generate token: ${generateToken.token}");
+                CallSettings callSettings =
+                    (CallSettingsBuilder()
+                          // ..defaultLayout = true
+                          ..setAudioOnlyCall =
+                              true //CometChatCallsEventsListener
+                              )
+                        .build();
+
+                CometChatCalls.startSession(
+                  generateToken.token!,
+                  callSettings,
+                  onSuccess: (Widget? callingWidget) {
+                    debugPrint("Success Start Session");
+                  },
+                  onError: (CometChatCallsException e) {
+                    debugPrint("Error: $e");
+                    isCallSessionStarted = false;
+                  },
+                );
+              },
+              onError: (CometChatCallsException e) {
+                debugPrint("Error: $e");
+                isCallSessionStarted = false;
+              },
+            );
+          }
+        },
+        onOutgoingCallRejectedFunc: (Call call) {},
+        onCallEndedMessageReceivedFunc: (Call call) {},
+      ),
+    );
+
+    CometChat.addGroupListener(
+      "GROUP_LISTENER",
+      GroupMemberListener(
+        onMemberAdded: (User addedUser, Group addedTo) {
+          fetchConversations();
+        },
+        onMemberKicked: (User kickedUser, User kickedBy, Group kickedFrom) {},
+        onMemberLeft: (User leftUser, Group leftGroup) {},
+        onMemberBanned: (User bannedUser, User bannedBy, Group bannedFrom) {},
+      ),
+    );
   }
 
   @override
   void dispose() {
     super.dispose();
-    CometChat.removeMessageListener("HOME_SCREEN_LISTENER");
+    CometChat.removeMessageListener("MESSAGE_LISTENER");
     CometChat.removeUserListener("HOME_SCREEN_USER_PRESENCE_LISTENER");
+    CometChat.removeGroupListener("GROUP_LISTENER");
   }
 
   @override
@@ -299,6 +447,7 @@ class _HomescreenState extends State<Homescreen> {
         child: ListView.builder(
           itemCount: conversations.length,
           itemBuilder: (context, index) {
+            print(conversations[0]);
             var conversation = conversations[index];
             String? conversationId = "";
             if (conversation.conversationWith is User) {
@@ -313,7 +462,9 @@ class _HomescreenState extends State<Homescreen> {
                   context,
                   MaterialPageRoute(
                     builder:
-                        (context) => Chatscreen(conversation: conversation),
+                        (context) => Chatscreen(conversation: conversation, onNewMessageSent: (message) {
+                          updateConversationList(message);
+                        }),
                   ),
                 ).then((_) {
                   fetchUser();
@@ -337,20 +488,56 @@ class _HomescreenState extends State<Homescreen> {
                       CircleAvatar(
                         radius: 25,
                         backgroundImage:
-                            conversation.conversationWith is User &&
-                                    (conversation.conversationWith as User)
-                                            .avatar !=
-                                        null
+                            conversation.conversationWith is User
+                                ? (conversation.conversationWith as User)
+                                                .avatar !=
+                                            null &&
+                                        (conversation.conversationWith as User)
+                                            .avatar!
+                                            .isNotEmpty
+                                    ? NetworkImage(
+                                      (conversation.conversationWith as User)
+                                          .avatar!,
+                                    )
+                                    : null
+                                : (conversation.conversationWith as Group)
+                                            .icon !=
+                                        null &&
+                                    (conversation.conversationWith as Group)
+                                        .icon!
+                                        .isNotEmpty
                                 ? NetworkImage(
-                                  (conversation.conversationWith as User)
-                                      .avatar!,
+                                  (conversation.conversationWith as Group)
+                                      .icon!,
                                 )
                                 : null,
                         child:
-                            conversation.conversationWith is Group
-                                ? Icon(Icons.group, color: Colors.teal.shade500)
+                            (conversation.conversationWith is User &&
+                                        ((conversation.conversationWith as User)
+                                                    .avatar ==
+                                                null ||
+                                            (conversation.conversationWith
+                                                    as User)
+                                                .avatar!
+                                                .isEmpty)) ||
+                                    (conversation.conversationWith is Group &&
+                                        ((conversation.conversationWith
+                                                        as Group)
+                                                    .icon ==
+                                                null ||
+                                            (conversation.conversationWith
+                                                    as Group)
+                                                .icon!
+                                                .isEmpty))
+                                ? Icon(
+                                  conversation.conversationWith is User
+                                      ? Icons.person
+                                      : Icons.group,
+                                  color: Colors.white,
+                                )
                                 : null,
                       ),
+
                       if (conversation.conversationWith is User &&
                           isUserOnline(
                             (conversation.conversationWith as User).uid,
@@ -418,13 +605,15 @@ class _HomescreenState extends State<Homescreen> {
 
 class HomeScreenMessageListener with MessageListener {
   final Function(TextMessage) onNewTextMessage;
-  final Function(String) onTypingStartedFunc;
-  final Function(String) onTypingEndedFunc;
+  final Function(MediaMessage) onNewMediaMessage;
+  final Function(TypingIndicator) onTypingStartedFunc;
+  final Function(TypingIndicator) onTypingEndedFunc;
   final Function(BaseMessage) onMessageDelete;
   final Function(BaseMessage) onMessageEdit;
 
   HomeScreenMessageListener({
     required this.onNewTextMessage,
+    required this.onNewMediaMessage,
     required this.onTypingStartedFunc,
     required this.onTypingEndedFunc,
     required this.onMessageDelete,
@@ -440,6 +629,7 @@ class HomeScreenMessageListener with MessageListener {
   @override
   void onMediaMessageReceived(MediaMessage mediaMessage) {
     debugPrint("Media message received successfully: $mediaMessage");
+    onNewMediaMessage(mediaMessage);
   }
 
   @override
@@ -475,13 +665,13 @@ class HomeScreenMessageListener with MessageListener {
   @override
   void onTypingStarted(TypingIndicator typingIndicator) {
     debugPrint("${typingIndicator.sender.uid} is typing...");
-    onTypingStartedFunc(typingIndicator.sender.uid);
+    onTypingStartedFunc(typingIndicator);
   }
 
   @override
   void onTypingEnded(TypingIndicator typingIndicator) {
     debugPrint("${typingIndicator.sender.uid}");
-    onTypingEndedFunc(typingIndicator.sender.uid);
+    onTypingEndedFunc(typingIndicator);
   }
 }
 
