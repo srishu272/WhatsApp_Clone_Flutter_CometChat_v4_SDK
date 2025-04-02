@@ -42,6 +42,7 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen> {
   }
 
   void startCall() {
+
     String callType = widget.callType;
     String receiverUid;
     String receiverType;
@@ -84,7 +85,7 @@ class _OutgoingCallScreenState extends State<OutgoingCallScreen> {
         "cancelled",
         onSuccess: (Call call) {
           debugPrint("Call cancelled successfully");
-          // Navigator.pop(context);
+          Navigator.pop(context);
         },
         onError: (CometChatException e) {
           debugPrint("Call cancellation failed: ${e.message}");

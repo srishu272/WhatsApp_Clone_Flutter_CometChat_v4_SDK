@@ -13,8 +13,10 @@ import 'package:my_first_app/screens/addUserScreen.dart';
 import 'package:my_first_app/screens/calling/incomingCallScreen.dart';
 import 'package:my_first_app/screens/chatScreen.dart';
 import 'package:my_first_app/screens/loginScreen.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../listeners/groupMembersListener.dart';
+import '../listeners/ongoingCallEventListener.dart';
 import 'calling/ongoingCallScreen.dart';
 
 class Homescreen extends StatefulWidget {
@@ -34,33 +36,55 @@ class _HomescreenState extends State<Homescreen> {
   bool isCallScreenOpen = false;
   bool isCallSessionStarted = false;
 
+  Future<void> requestCallPermissions() async {
+    Map<Permission, PermissionStatus> statuses =
+        await [Permission.microphone, Permission.camera].request();
+
+    if (statuses[Permission.microphone]!.isGranted &&
+        statuses[Permission.camera]!.isGranted) {
+      debugPrint("Microphone & Camera permissions granted");
+    } else {
+      debugPrint("Permissions not granted");
+      // showPermissionDeniedMessage();
+    }
+
+    if (statuses[Permission.microphone]!.isPermanentlyDenied ||
+        statuses[Permission.camera]!.isPermanentlyDenied) {
+      debugPrint("Microphone or Camera permission permanently denied");
+      openAppSettings(); // Redirect user to app settings if permanently denied
+    }
+  }
+
   Future<void> fetchConversations() async {
     ConversationsRequest request = ConversationsRequestBuilder().build();
 
     request.fetchNext(
       onSuccess: (List<Conversation> fetchedConversations) async {
         // Extract user IDs from the fetched conversations
-        List<String> userIds = fetchedConversations
-            .where((conv) => conv.conversationWith is User)
-            .map((conv) => (conv.conversationWith as User).uid)
-            .toList();
+        List<String> userIds =
+            fetchedConversations
+                .where((conv) => conv.conversationWith is User)
+                .map((conv) => (conv.conversationWith as User).uid)
+                .toList();
 
         // Create a temporary map to store fetched user statuses
         Map<String, bool> tempOnlineUsers = {};
 
         // Fetch user statuses in parallel
         if (userIds.isNotEmpty) {
-          await Future.wait(userIds.map(
-                (userId) => CometChat.getUser(
-              userId,
-              onSuccess: (User user) {
-                tempOnlineUsers[user.uid] = user.status == "online";
-              },
-              onError: (CometChatException e) {
-                debugPrint("Error fetching user status: ${e.message}");
-              },
+          await Future.wait(
+            userIds.map(
+              (userId) => CometChat.getUser(
+                userId,
+                onSuccess: (User user) {
+                  tempOnlineUsers[user.uid] = user.status == "online";
+                },
+                onError: (CometChatException e) {
+                  debugPrint("Error fetching user status: ${e.message}");
+                },
+              ),
             ),
-          ));
+          );
         }
 
         // Update UI in a single setState call
@@ -179,7 +203,9 @@ class _HomescreenState extends State<Homescreen> {
     return onlineUsers[userId] ?? false;
   }
 
-  void updateConversationList(BaseMessage message) {
+  void updateConversationList(BaseMessage message) async {
+    User? loggedInUser = await CometChat.getLoggedInUser();
+
     setState(() {
       // Find the conversation in the list
       int index = conversations.indexWhere((c) {
@@ -196,6 +222,13 @@ class _HomescreenState extends State<Homescreen> {
         // Move conversation to the top and update last message
         Conversation updatedConversation = conversations[index];
         updatedConversation.lastMessage = message;
+
+        // Increment unread count if the message is not sent by the current user
+        if (message.sender?.uid != loggedInUser?.uid) {
+          updatedConversation.unreadMessageCount =
+              (updatedConversation.unreadMessageCount ?? 0) + 1;
+        }
+
         conversations.removeAt(index);
         conversations.insert(0, updatedConversation);
       } else {
@@ -208,6 +241,8 @@ class _HomescreenState extends State<Homescreen> {
   @override
   void initState() {
     super.initState();
+    requestCallPermissions();
+
     fetchUser();
     fetchConversations();
 
@@ -223,23 +258,35 @@ class _HomescreenState extends State<Homescreen> {
           updateConversationList(mediaMessage);
         },
         onTypingStartedFunc: (TypingIndicator typingIndicator) {
-          setState(() {
-            if (typingIndicator.receiverType == CometChatReceiverType.user) {
-              // Direct message, show only "Typing..."
-              typingUsers[typingIndicator.receiverId] = "Typing...";
-            } else if (typingIndicator.receiverType ==
-                CometChatReceiverType.group) {
-              // Group message, show "User is typing..."
-              typingUsers[typingIndicator.receiverId] =
-                  "${typingIndicator.sender.name} is typing...";
-            }
-          });
+          debugPrint(
+            "Typing started - Sender: ${typingIndicator.sender.uid}, Receiver: ${typingIndicator.receiverId}, Type: ${typingIndicator.receiverType}",
+          );
+
+          if (mounted) {
+            setState(() {
+              String conversationId = typingIndicator.receiverId;
+
+              if (typingIndicator.receiverType == CometChatReceiverType.user) {
+                // Direct chat - show "Typing..." for that user
+                typingUsers[conversationId] = "Typing...";
+              } else if (typingIndicator.receiverType ==
+                  CometChatReceiverType.group) {
+                // Group chat - show "<User> is typing..." for that group
+                typingUsers[conversationId] =
+                    "${typingIndicator.sender.name} is typing...";
+              }
+            });
+            debugPrint("✅ Updated typingUsers Map: $typingUsers");
+          }
         },
 
         onTypingEndedFunc: (TypingIndicator typingIndicator) {
-          setState(() {
-            typingUsers.remove(typingIndicator.receiverId);
-          });
+          if (mounted) {
+            setState(() {
+              String conversationId = typingIndicator.receiverId;
+              typingUsers.remove(conversationId);
+            });
+          }
         },
         onMessageDelete: (BaseMessage message) {
           // updateLastMessage(message);
@@ -282,6 +329,7 @@ class _HomescreenState extends State<Homescreen> {
                     (context) => IncomingCallScreen(
                       user: call.sender!,
                       sessionID: call.sessionId!,
+                      callType: call.type,
                     ),
               ),
             ).then((_) => isCallScreenOpen = false);
@@ -291,10 +339,17 @@ class _HomescreenState extends State<Homescreen> {
           Navigator.pop(context);
         },
         onOutgoingCallAcceptedFunc: (Call call) async {
+          // CometChatCalls.addCallsEventListeners(
+          //   "ONGOING_CALL_LISTENER",
+          //   OngoingCallEventListener(
+          //     sessionId: call.sessionId!,
+          //     isDefaultCall: call.receiverType == CometChatReceiverType.user,
+          //   ),
+          // );
+
           if (!isCallSessionStarted) {
             isCallSessionStarted = true;
 
-            debugPrint(call.sessionId);
             String? userAuthToken =
                 await CometChat.getUserAuthToken(); //Logged in user auth token
 
@@ -303,12 +358,18 @@ class _HomescreenState extends State<Homescreen> {
               userAuthToken!,
               onSuccess: (GenerateToken generateToken) {
                 debugPrint("Success generate token: ${generateToken.token}");
+                OngoingCallEventListener ongoingCallEventListener =
+                    OngoingCallEventListener(
+                      sessionId: call.sessionId!,
+                      isDefaultCall:
+                          call.receiverType == CometChatReceiverType.user,
+                    );
                 CallSettings callSettings =
                     (CallSettingsBuilder()
                           // ..defaultLayout = true
                           ..setAudioOnlyCall =
-                              true //CometChatCallsEventsListener
-                              )
+                              call.type == "audio" ? true : false
+                          ..listener = ongoingCallEventListener)
                         .build();
 
                 CometChatCalls.startSession(
@@ -316,6 +377,21 @@ class _HomescreenState extends State<Homescreen> {
                   callSettings,
                   onSuccess: (Widget? callingWidget) {
                     debugPrint("Success Start Session");
+                    Navigator.of(context).pushReplacement(
+                      MaterialPageRoute(
+                        builder:
+                            (context) => OngoingCallScreen(
+                              callingWidget: callingWidget,
+                              sessionId: call.sessionId!,
+                              isCaller: true,
+                              isDefaultCall:
+                                  call.receiverType ==
+                                          CometChatReceiverType.user
+                                      ? true
+                                      : false,
+                            ),
+                      ),
+                    );
                   },
                   onError: (CometChatCallsException e) {
                     debugPrint("Error: $e");
@@ -330,8 +406,24 @@ class _HomescreenState extends State<Homescreen> {
             );
           }
         },
-        onOutgoingCallRejectedFunc: (Call call) {},
-        onCallEndedMessageReceivedFunc: (Call call) {},
+        onOutgoingCallRejectedFunc: (Call call) {
+          debugPrint("Call rejected");
+          Navigator.pop(context);
+        },
+        onCallEndedMessageReceivedFunc: (Call call) {
+          debugPrint("Call ended message received");
+
+          CometChatCalls.endSession(
+            onSuccess: (onSuccess) {
+              debugPrint("End session successful 1001");
+              CometChat.clearActiveCall();
+              Navigator.pop(context);
+            },
+            onError: (e) {
+              debugPrint("End session failed with error ${e.toString()}");
+            },
+          );
+        },
       ),
     );
 
@@ -354,6 +446,7 @@ class _HomescreenState extends State<Homescreen> {
     CometChat.removeMessageListener("MESSAGE_LISTENER");
     CometChat.removeUserListener("HOME_SCREEN_USER_PRESENCE_LISTENER");
     CometChat.removeGroupListener("GROUP_LISTENER");
+    CometChatCalls.removeCallsEventListeners("ONGOING_CALL_LISTENER");
   }
 
   @override
@@ -378,6 +471,18 @@ class _HomescreenState extends State<Homescreen> {
         ),
         backgroundColor: Colors.teal.shade900,
         actions: [
+          IconButton(
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => Adduserscreen()),
+              ).then((_) {
+                fetchUser();
+                fetchConversations();
+              });
+            },
+            icon: Icon(Icons.person_add_alt_1_rounded, color: Colors.white),
+          ),
           PopupMenuButton<String>(
             icon: Icon(Icons.more_vert_rounded),
             iconColor: Colors.white,
@@ -462,9 +567,12 @@ class _HomescreenState extends State<Homescreen> {
                   context,
                   MaterialPageRoute(
                     builder:
-                        (context) => Chatscreen(conversation: conversation, onNewMessageSent: (message) {
-                          updateConversationList(message);
-                        }),
+                        (context) => Chatscreen(
+                          conversation: conversation,
+                          onNewMessageSent: (message) {
+                            updateConversationList(message);
+                          },
+                        ),
                   ),
                 ).then((_) {
                   fetchUser();
@@ -564,39 +672,51 @@ class _HomescreenState extends State<Homescreen> {
                     style: TextStyle(fontSize: 20, color: Colors.black),
                   ),
                   subtitle: Text(
-                    typingUsers[conversationId] ??
-                        getLastMessage(conversation.lastMessage),
-                    style: TextStyle(fontSize: 16, color: Colors.grey),
+                    typingUsers[conversation.conversationWith is User
+                            ? (conversation.conversationWith as User).uid
+                            : (conversation.conversationWith as Group).guid]
+                        ?? getLastMessage(conversation.lastMessage),
+                    style: TextStyle(
+                      fontSize: 16,
+                      color:
+                          typingUsers[conversationId] != null
+                              ? Colors.green
+                              : Colors.grey,
+                    ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
-                  trailing: Text(
-                    formatTimestamp(conversation.lastMessage!.sentAt!),
-                    style: TextStyle(color: Colors.grey, fontSize: 13),
+                  trailing: Column(
+                    children: [
+                      conversation.unreadMessageCount! > 0
+                          ? Container(
+                            decoration: BoxDecoration(
+                              color: Colors.teal.shade900,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            padding: EdgeInsets.symmetric(
+                              vertical: 3,
+                              horizontal: 7,
+                            ),
+                            child: Text(
+                              conversation.unreadMessageCount.toString(),
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 14,
+                              ),
+                            ),
+                          )
+                          : SizedBox(),
+                      Text(
+                        formatTimestamp(conversation.lastMessage!.sentAt!),
+                        style: TextStyle(color: Colors.grey, fontSize: 13),
+                      ),
+                    ],
                   ),
                 ),
               ),
             );
           },
-        ),
-      ),
-      floatingActionButton: InkWell(
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => Adduserscreen()),
-          ).then((_) {
-            fetchUser();
-            fetchConversations();
-          });
-        },
-        child: Container(
-          padding: EdgeInsets.symmetric(vertical: 15, horizontal: 15),
-          decoration: BoxDecoration(
-            color: Colors.teal.shade900,
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Icon(Icons.person_add_alt_1_rounded, color: Colors.white),
         ),
       ),
     );

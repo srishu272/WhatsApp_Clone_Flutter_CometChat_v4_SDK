@@ -41,6 +41,7 @@ class _ChatscreenState extends State<Chatscreen> {
   late MessagesRequest request;
 
   void startTyping() {
+
     if (widget.conversation.conversationWith is User) {
       CometChat.startTyping(
         receiverUid: (widget.conversation.conversationWith as User).uid,
@@ -693,7 +694,7 @@ class _ChatscreenState extends State<Chatscreen> {
     CometChat.addMessageListener(
       "CHAT_SCREEN_LISTENER",
       ChatMessageListener(
-        onNewTextMessage: (TextMessage message) {
+        onNewTextMessage: (TextMessage message) async {
           if (message.parentMessageId == 0) {
             if ((widget.conversation.conversationWith is User &&
                     message.sender?.uid ==
@@ -701,6 +702,8 @@ class _ChatscreenState extends State<Chatscreen> {
                 (widget.conversation.conversationWith is Group &&
                     message.receiverUid ==
                         (widget.conversation.conversationWith as Group).guid)) {
+
+
               setState(() {
                 messages.insert(0, message);
               });
@@ -745,38 +748,44 @@ class _ChatscreenState extends State<Chatscreen> {
           });
         },
         onTypingStartedFunc: (TypingIndicator typingIndicator) {
-          if (widget.conversation.conversationWith is User) {
-            // Direct chat: check if the sender is the same user
-            if (typingIndicator.sender.uid ==
-                (widget.conversation.conversationWith as User).uid) {
-              setState(() {
-                typingUser = typingIndicator.sender.name;
-              });
-            }
-          } else if (widget.conversation.conversationWith is Group) {
-            // Group chat: print the name of the user who is typing
+          if (mounted) {
             setState(() {
-              typingUser = typingIndicator.sender.name;
+              if (widget.conversation.conversationWith is User) {
+                // Direct chat - only update if it's the correct user
+                if (typingIndicator.sender.uid ==
+                        (widget.conversation.conversationWith as User).uid &&
+                    typingIndicator.receiverType ==
+                        CometChatReceiverType.user) {
+                  typingUser = "Typing...";
+                }
+              } else if (widget.conversation.conversationWith is Group) {
+                // Group chat - only update if it's the correct group
+                if (typingIndicator.receiverId ==
+                    (widget.conversation.conversationWith as Group).guid) {
+                  typingUser = "${typingIndicator.sender.name} is typing...";
+                }
+              }
             });
-            print("${typingIndicator.sender.name} is typing...");
           }
         },
 
         onTypingEndedFunc: (TypingIndicator typingIndicator) {
-          if (widget.conversation.conversationWith is User) {
-            // Direct chat: check if the sender is the same user
-            if (typingIndicator.sender.uid ==
-                (widget.conversation.conversationWith as User).uid) {
-              setState(() {
-                typingUser = null;
-              });
-            }
-          } else if (widget.conversation.conversationWith is Group) {
-            // Group chat: print the name of the user who is typing
+          if (mounted) {
             setState(() {
-              typingUser = null;
+              if (widget.conversation.conversationWith is User) {
+                if (typingIndicator.sender.uid ==
+                        (widget.conversation.conversationWith as User).uid &&
+                    typingIndicator.receiverType ==
+                        CometChatReceiverType.user) {
+                  typingUser = null;
+                }
+              } else if (widget.conversation.conversationWith is Group) {
+                if (typingIndicator.receiverId ==
+                    (widget.conversation.conversationWith as Group).guid) {
+                  typingUser = null;
+                }
+              }
             });
-            print("${typingIndicator.sender.name} is typing...");
           }
         },
 
@@ -951,7 +960,7 @@ class _ChatscreenState extends State<Chatscreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     SizedBox(
-                      width: MediaQuery.of(context).size.width * 0.4,
+                      width: MediaQuery.of(context).size.width * 0.3,
                       child: Text(
                         widget.conversation.conversationWith is User
                             ? (widget.conversation.conversationWith as User)
@@ -967,14 +976,14 @@ class _ChatscreenState extends State<Chatscreen> {
                     ),
                     if (typingUser != null) ...[
                       SizedBox(
-                        width: MediaQuery.of(context).size.width * 0.4,
+                        width: MediaQuery.of(context).size.width * 0.3,
                         child: Text(
                           widget.conversation.conversationWith is User
                               ? "Typing...."
                               : "${typingUser} is Typing...",
                           style: TextStyle(
                             color: Colors.green,
-                            fontSize: 18,
+                            fontSize: 12,
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
@@ -984,16 +993,23 @@ class _ChatscreenState extends State<Chatscreen> {
                         children: [
                           Text(
                             "Online",
-                            style: TextStyle(color: Colors.white, fontSize: 18),
+                            style: TextStyle(color: Colors.white, fontSize: 12),
                           ),
                         ],
                       ),
                     ] else ...[
                       if (widget.conversation.conversationWith is User)
-                        Text(
-                          "last seen ${formatTimestamp((widget.conversation.conversationWith as User).lastActiveAt!)}" ??
-                              "",
-                          style: TextStyle(color: Colors.white, fontSize: 18),
+                        SizedBox(
+                          width: MediaQuery.of(context).size.width * 0.3,
+                          child: Text(
+                            "last seen ${formatTimestamp((widget.conversation.conversationWith as User).lastActiveAt!)}" ??
+                                "",
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              overflow: TextOverflow.fade,
+                            ),
+                          ),
                         ),
                     ],
                   ],
