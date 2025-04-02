@@ -264,16 +264,16 @@ class _HomescreenState extends State<Homescreen> {
 
           if (mounted) {
             setState(() {
-              String conversationId = typingIndicator.receiverId;
-
               if (typingIndicator.receiverType == CometChatReceiverType.user) {
+                String conversationId = typingIndicator.sender.uid;
                 // Direct chat - show "Typing..." for that user
                 typingUsers[conversationId] = "Typing...";
               } else if (typingIndicator.receiverType ==
                   CometChatReceiverType.group) {
-                // Group chat - show "<User> is typing..." for that group
-                typingUsers[conversationId] =
-                    "${typingIndicator.sender.name} is typing...";
+                String conversationId = typingIndicator.receiverId;
+
+                //   // Group chat - show "<User> is typing..." for that group
+                  typingUsers[conversationId] = "${typingIndicator.sender.name} is typing...";
               }
             });
             debugPrint("✅ Updated typingUsers Map: $typingUsers");
@@ -283,7 +283,14 @@ class _HomescreenState extends State<Homescreen> {
         onTypingEndedFunc: (TypingIndicator typingIndicator) {
           if (mounted) {
             setState(() {
-              String conversationId = typingIndicator.receiverId;
+              String conversationId = "";
+              if(typingIndicator.receiverType == CometChatReceiverType.user){
+                conversationId = typingIndicator.sender.uid;
+              }
+              else if (typingIndicator.receiverType == CometChatReceiverType.group){
+                conversationId = typingIndicator.receiverId;
+
+              }
               typingUsers.remove(conversationId);
             });
           }
