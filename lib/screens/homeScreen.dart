@@ -102,21 +102,25 @@ class _HomescreenState extends State<Homescreen> {
   void updateLastMessage(BaseMessage message) {
     setState(() {
       for (var conversation in conversations) {
-        // Check if the current conversation is related to the message
         bool isRelatedConversation = false;
-        if (conversation.conversationWith is User &&
-            (conversation.conversationWith as User).uid ==
-                message.sender?.uid) {
-          isRelatedConversation = true;
-        } else if (conversation.conversationWith is Group &&
-            (conversation.conversationWith as Group).guid ==
-                message.receiverUid) {
-          isRelatedConversation = true;
+
+        if (message.receiverType == CometChatReceiverType.user) {
+          // Direct Chat
+          if (conversation.conversationWith is User &&
+              (conversation.conversationWith as User).uid == message.receiverUid) {
+            isRelatedConversation = true;
+          }
+        } else if (message.receiverType == CometChatReceiverType.group) {
+          // Group Chat
+          if (conversation.conversationWith is Group &&
+              (conversation.conversationWith as Group).guid == message.receiverUid) {
+            isRelatedConversation = true;
+          }
         }
+
         if (isRelatedConversation) {
-          // Check if the updated message is the same as the last message
-          if (conversation.lastMessage?.id == message.id ||
-              conversation.lastMessage == null) {
+          // Update last message only if it belongs to the correct conversation
+          if (conversation.lastMessage?.id == message.id || conversation.lastMessage == null) {
             conversation.lastMessage = message;
           }
           break;
@@ -124,6 +128,7 @@ class _HomescreenState extends State<Homescreen> {
       }
     });
   }
+
 
   void logout() {
     CometChat.logout(
@@ -419,7 +424,9 @@ class _HomescreenState extends State<Homescreen> {
         },
         onCallEndedMessageReceivedFunc: (Call call) {
           debugPrint("Call ended message received");
-
+          setState(() {
+            isCallSessionStarted = false;
+          });
           CometChatCalls.endSession(
             onSuccess: (onSuccess) {
               debugPrint("End session successful 1001");

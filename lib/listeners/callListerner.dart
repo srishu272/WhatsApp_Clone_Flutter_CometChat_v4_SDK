@@ -42,7 +42,7 @@ class CallEventListener with CallListener {
 
   @override
   void onOutgoingCallAccepted(Call call) {
-    debugPrint("Outgoing call accepted");
+    debugPrint("Outgoing call accepted: ${call.sessionId}");
     onOutgoingCallAcceptedFunc(call);
   }
 

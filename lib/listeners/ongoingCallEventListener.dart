@@ -16,19 +16,6 @@ class OngoingCallEventListener with CometChatCallsEventsListener {
     debugPrint("End call button pressed");
     if (isDefaultCall) {
       isCallEndedByMe = true;
-      CometChat.endCall(
-        sessionId,
-        onSuccess: (Call call) {
-          debugPrint("Call ended successfully");
-          if (navigatorKey.currentState?.canPop() ?? false) {
-            navigatorKey.currentState?.pop();
-          }
-
-        },
-        onError: (CometChatException e) {
-          debugPrint("Error ending call: ${e.message}");
-        },
-      );
 
     } else {
       CometChatCalls.endSession(
@@ -56,9 +43,15 @@ class OngoingCallEventListener with CometChatCallsEventsListener {
           sessionId,
           onSuccess: (Call call) {
             debugPrint("Call ended successfully");
-            // if (navigatorKey.currentState?.canPop() ?? false) {
-            //   navigatorKey.currentState?.pop();
-            // }
+            CometChatCalls.endSession(onSuccess: (onSuccess){
+              debugPrint("End session successful 111111");
+              CometChat.clearActiveCall();
+              if (navigatorKey.currentState?.canPop() ?? false) {
+                navigatorKey.currentState?.pop();
+              }
+            }, onError: (e){
+
+            });
           },
           onError: (CometChatException e) {
             debugPrint("Error ending call: ${e.message}");

@@ -91,7 +91,7 @@ class _IncomingCallScreenState extends State<IncomingCallScreen> {
               generateToken.token!,
               callSettings,
               onSuccess: (Widget? callingWidget) {
-                debugPrint("Success Start Session");
+                debugPrint("Success Start Session: ${call.sessionId!}");
                 // Force enable speaker mode
                 CometChatCalls.setAudioMode(
                   "AUDIO_MODE_SPEAKER",

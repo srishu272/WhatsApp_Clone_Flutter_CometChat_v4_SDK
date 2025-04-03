@@ -41,7 +41,6 @@ class _ChatscreenState extends State<Chatscreen> {
   late MessagesRequest request;
 
   void startTyping() {
-
     if (widget.conversation.conversationWith is User) {
       CometChat.startTyping(
         receiverUid: (widget.conversation.conversationWith as User).uid,
@@ -159,9 +158,11 @@ class _ChatscreenState extends State<Chatscreen> {
     ReactionEvent reactionEvent,
     bool isAddReaction,
   ) async {
-    debugPrint("Update Reaction called");
     int index = messages.indexWhere((msg) => msg.id == messageId);
-    if (index == -1) return; // Message not found
+
+    if (index == -1) {
+      return; // Message not found
+    }
 
     try {
       if (reactionEvent.reaction == null) {
@@ -184,6 +185,8 @@ class _ChatscreenState extends State<Chatscreen> {
           );
 
       if (updatedMessage != null) {
+        debugPrint("🔄 Updated message received: ${updatedMessage.toJson()}");
+
         setState(() {
           messages[index] = updatedMessage;
         });
@@ -702,8 +705,6 @@ class _ChatscreenState extends State<Chatscreen> {
                 (widget.conversation.conversationWith is Group &&
                     message.receiverUid ==
                         (widget.conversation.conversationWith as Group).guid)) {
-
-
               setState(() {
                 messages.insert(0, message);
               });
@@ -818,17 +819,19 @@ class _ChatscreenState extends State<Chatscreen> {
           });
         },
         onMessageReactionAddition: (ReactionEvent reactionEvent) {
-          debugPrint("onMessageReactionAddition");
+          debugPrint(
+            "onMessageReactionAddition called ParentID: ${reactionEvent.reaction!.messageId}",
+          );
           updateMessageReactions(
-            reactionEvent.parentMessageId!,
+            reactionEvent.reaction!.messageId!,
             reactionEvent,
             true,
           );
         },
         onMessageReactionRemoval: (ReactionEvent reactionEvent) {
-          debugPrint("onMessageReactionRemoval");
+          debugPrint("onMessageReactionRemoval calledd");
           updateMessageReactions(
-            reactionEvent.parentMessageId!,
+            reactionEvent.reaction!.messageId!,
             reactionEvent,
             false,
           );
@@ -1159,10 +1162,12 @@ class _ChatscreenState extends State<Chatscreen> {
                             }
                             if (message is Action) {
                               String actionMessage = message.message!;
-                              if (actionMessage == "Message Deleted") {
+                              if (actionMessage == "Message Deleted" ||
+                                  actionMessage == "Message is deleted.") {
                                 return SizedBox();
                               }
-                              if (actionMessage == "Message Edited") {
+                              if (actionMessage == "Message Edited" ||
+                                  actionMessage == "Message is edited.") {
                                 return SizedBox();
                               }
 
@@ -1305,81 +1310,92 @@ class TextMessageWidget extends StatelessWidget {
         children: [
           Align(
             alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-            child: Container(
-              padding: EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: isMe ? Colors.teal.shade800 : Colors.grey.shade300,
-                borderRadius:
-                    isMe
-                        ? BorderRadius.only(
-                          topLeft: Radius.circular(10),
-                          topRight: Radius.circular(10),
-                          bottomLeft: Radius.circular(10),
-                          bottomRight: Radius.zero,
-                        )
-                        : BorderRadius.only(
-                          topLeft: Radius.circular(10),
-                          topRight: Radius.circular(10),
-                          bottomLeft: Radius.zero,
-                          bottomRight: Radius.circular(10),
-                        ),
-              ),
-              child: Column(
-                children: [
-                  if (isGroupChat && !isMe)
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        CircleAvatar(
-                          radius: 10,
-                          backgroundImage:
-                              message.sender?.avatar != null
-                                  ? NetworkImage(message.sender!.avatar!)
-                                  : null,
-                          backgroundColor: Colors.teal,
-                          child:
-                              message.sender?.avatar == null
-                                  ? Icon(Icons.person, color: Colors.white)
-                                  : null,
-                        ),
-                        SizedBox(width: 10),
-                        Text(
-                          message.sender?.name ?? "Unknown",
-                          style: TextStyle(fontSize: 14),
-                        ),
-                      ],
-                    ),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
+            child: Column(
+              mainAxisAlignment:
+                  isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+              crossAxisAlignment:
+                  isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+              children: [
+                if (isGroupChat && !isMe)
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
+                      CircleAvatar(
+                        radius: 10,
+                        backgroundImage:
+                            message.sender?.avatar != null
+                                ? NetworkImage(message.sender!.avatar!)
+                                : null,
+                        backgroundColor: Colors.teal,
+                        child:
+                            message.sender?.avatar == null
+                                ? Icon(Icons.person, color: Colors.white)
+                                : null,
+                      ),
+                      SizedBox(width: 5),
                       Text(
-                        message.text,
-                        style: TextStyle(
-                          fontSize: 17,
-                          color: isMe ? Colors.white : Colors.black,
-                          fontStyle:
-                              message.text == "This message was deleted"
-                                  ? FontStyle.italic
-                                  : FontStyle.normal,
-                        ),
+                        message.sender?.name.split(" ").first ?? "Unknown",
+                        style: TextStyle(fontSize: 14),
                       ),
-                      SizedBox(height: 5),
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            formatedTimestamp,
-                            style: TextStyle(fontSize: 12, color: Colors.grey),
-                          ),
-                          SizedBox(width: 5),
-                          isMe ? getMessageStatusIcon : SizedBox(),
-                        ],
-                      ),
-                      SizedBox(height: 2),
                     ],
                   ),
-                ],
-              ),
+                Container(
+                  padding: EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: isMe ? Colors.teal.shade800 : Colors.grey.shade300,
+                    borderRadius:
+                        isMe
+                            ? BorderRadius.only(
+                              topLeft: Radius.circular(10),
+                              topRight: Radius.circular(10),
+                              bottomLeft: Radius.circular(10),
+                              bottomRight: Radius.zero,
+                            )
+                            : BorderRadius.only(
+                              topLeft: Radius.circular(10),
+                              topRight: Radius.circular(10),
+                              bottomLeft: Radius.zero,
+                              bottomRight: Radius.circular(10),
+                            ),
+                  ),
+                  child: Column(
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            message.text,
+                            style: TextStyle(
+                              fontSize: 17,
+                              color: isMe ? Colors.white : Colors.black,
+                              fontStyle:
+                                  message.text == "This message was deleted"
+                                      ? FontStyle.italic
+                                      : FontStyle.normal,
+                            ),
+                          ),
+                          SizedBox(height: 5),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                formatedTimestamp,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey,
+                                ),
+                              ),
+                              SizedBox(width: 5),
+                              isMe ? getMessageStatusIcon : SizedBox(),
+                            ],
+                          ),
+                          SizedBox(height: 2),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ),
           if (message.reactions.isNotEmpty)
@@ -1721,27 +1737,63 @@ class _MediaMessageWidgetState extends State<MediaMessageWidget> {
           Align(
             alignment:
                 widget.isMe ? Alignment.centerRight : Alignment.centerLeft,
-            child: Container(
-              padding: EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color:
-                    widget.isMe ? Colors.teal.shade800 : Colors.grey.shade300,
-                borderRadius:
-                    widget.isMe
-                        ? BorderRadius.only(
-                          topLeft: Radius.circular(10),
-                          topRight: Radius.circular(10),
-                          bottomLeft: Radius.circular(10),
-                          bottomRight: Radius.zero,
-                        )
-                        : BorderRadius.only(
-                          topLeft: Radius.circular(10),
-                          topRight: Radius.circular(10),
-                          bottomLeft: Radius.zero,
-                          bottomRight: Radius.circular(10),
-                        ),
-              ),
-              child: _buildMediaPreview(),
+            child: Column(
+              mainAxisAlignment:
+                  widget.isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+              crossAxisAlignment:
+                  widget.isMe
+                      ? CrossAxisAlignment.end
+                      : CrossAxisAlignment.start,
+              children: [
+                if (widget.isGroupChat && !widget.isMe)
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CircleAvatar(
+                        radius: 10,
+                        backgroundImage:
+                            widget.message.sender?.avatar != null
+                                ? NetworkImage(widget.message.sender!.avatar!)
+                                : null,
+                        backgroundColor: Colors.teal,
+                        child:
+                            widget.message.sender?.avatar == null
+                                ? Icon(Icons.person, color: Colors.white)
+                                : null,
+                      ),
+                      SizedBox(width: 10),
+                      Text(
+                        widget.message.sender?.name.split(" ").first ??
+                            "Unknown",
+                        style: TextStyle(fontSize: 14),
+                      ),
+                    ],
+                  ),
+                Container(
+                  padding: EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color:
+                        widget.isMe
+                            ? Colors.teal.shade800
+                            : Colors.grey.shade300,
+                    borderRadius:
+                        widget.isMe
+                            ? BorderRadius.only(
+                              topLeft: Radius.circular(10),
+                              topRight: Radius.circular(10),
+                              bottomLeft: Radius.circular(10),
+                              bottomRight: Radius.zero,
+                            )
+                            : BorderRadius.only(
+                              topLeft: Radius.circular(10),
+                              topRight: Radius.circular(10),
+                              bottomLeft: Radius.zero,
+                              bottomRight: Radius.circular(10),
+                            ),
+                  ),
+                  child: _buildMediaPreview(),
+                ),
+              ],
             ),
           ),
           if (widget.message.reactions.isNotEmpty)
@@ -1840,30 +1892,6 @@ class _MediaMessageWidgetState extends State<MediaMessageWidget> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
-        if (widget.isGroupChat && !widget.isMe)
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              CircleAvatar(
-                radius: 10,
-                backgroundImage:
-                    widget.message.sender?.avatar != null
-                        ? NetworkImage(widget.message.sender!.avatar!)
-                        : null,
-                backgroundColor: Colors.teal,
-                child:
-                    widget.message.sender?.avatar == null
-                        ? Icon(Icons.person, color: Colors.white)
-                        : null,
-              ),
-              SizedBox(width: 10),
-              Text(
-                widget.message.sender?.name ?? "Unknown",
-                style: TextStyle(fontSize: 14),
-              ),
-            ],
-          ),
-        SizedBox(height: 5),
         // Media preview
         _buildMediaContent(widget.isMe),
         SizedBox(height: 5),
