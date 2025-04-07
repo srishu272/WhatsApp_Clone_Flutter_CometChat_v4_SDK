@@ -14,7 +14,7 @@ import 'package:flutter/material.dart';
 import 'package:my_first_app/listeners/callListerner.dart';
 import 'package:my_first_app/screens/calling/ongoingCallScreen.dart';
 
-import '../../listeners/ongoingCallEventListener.dart';
+import '../../listeners/defaultCallEventListener.dart';
 
 class IncomingCallScreen extends StatefulWidget {
   const IncomingCallScreen({
@@ -35,29 +35,13 @@ class IncomingCallScreen extends StatefulWidget {
 class _IncomingCallScreenState extends State<IncomingCallScreen> {
   // User? user;
 
-  void initializeCometChatCalls() {
-    CallAppSettings callAppSettings =
-        (CallAppSettingBuilder()
-              ..appId = "27153765695d4ed3"
-              ..region = "IN")
-            .build();
 
-    CometChatCalls.init(
-      callAppSettings,
-      onSuccess: (String successMessage) {
-        debugPrint("Initialization completed successfully  $successMessage");
-      },
-      onError: (CometChatCallsException e) {
-        debugPrint("Initialization failed with exception: ${e.message}");
-      },
-    );
-  }
 
   @override
   void initState() {
     super.initState();
 
-    initializeCometChatCalls();
+    // initializeCometChatCalls();
   }
 
   void acceptCall(String sessionId) {
@@ -74,8 +58,8 @@ class _IncomingCallScreenState extends State<IncomingCallScreen> {
           userAuthToken!,
           onSuccess: (GenerateToken generateToken) {
             debugPrint("Success generate token: ${generateToken.token}");
-            OngoingCallEventListener ongoingCallEventListener =
-                OngoingCallEventListener(
+            DefaultCallEventListener ongoingCallEventListener =
+                DefaultCallEventListener(
                   sessionId: call.sessionId!,
                   isDefaultCall:
                       call.receiverType == CometChatReceiverType.user,
@@ -121,7 +105,6 @@ class _IncomingCallScreenState extends State<IncomingCallScreen> {
                           sessionId: widget.sessionID,
                           isDefaultCall:
                               call.receiverType == CometChatReceiverType.user,
-                          isCaller: false,
                         ),
                   ),
                 );

@@ -368,11 +368,14 @@ class TextMessageWidget extends StatelessWidget {
 
 import 'package:cometchat_sdk/builders/messages_request.dart';
 import 'package:cometchat_sdk/exception/cometchat_exception.dart';
+import 'package:cometchat_sdk/helpers/cometchat_helper.dart';
 import 'package:cometchat_sdk/main/cometchat.dart';
 import 'package:cometchat_sdk/models/base_message.dart';
+import 'package:cometchat_sdk/models/reaction.dart';
 import 'package:cometchat_sdk/models/reaction_count.dart';
 import 'package:cometchat_sdk/models/text_message.dart';
 import 'package:cometchat_sdk/models/user.dart';
+import 'package:cometchat_sdk/notification/models/reaction_event.dart';
 import 'package:cometchat_sdk/utils/constants.dart';
 import 'package:flutter/material.dart';
 import 'package:my_first_app/listeners/threadMessageListener.dart';
@@ -438,7 +441,25 @@ class _ThreadScreenState extends State<ThreadScreen> {
                 );
               }
             });
-          }
+          },
+          onMessageReactionAddedFunc: (ReactionEvent reactionEvent) {
+            debugPrint(
+              "onMessageReactionAddition called MessageID: ${reactionEvent.reaction!.messageId}",
+            );
+            updateMessageReactions(
+              reactionEvent.reaction!.messageId!,
+              reactionEvent,
+              true,
+            );
+          },
+          onMessageReactionRemovalFunc: (ReactionEvent reactionEvent) {
+            debugPrint("onMessageReactionRemoval calledd");
+            updateMessageReactions(
+              reactionEvent.reaction!.messageId!,
+              reactionEvent,
+              false,
+            );
+          },
         ));
   }
 
@@ -653,6 +674,50 @@ class _ThreadScreenState extends State<ThreadScreen> {
         // No existing reaction, just add the new one
         addReaction(messageId, newReaction);
       }
+    }
+  }
+
+  void updateMessageReactions(
+      int messageId,
+      ReactionEvent reactionEvent,
+      bool isAddReaction,
+      ) async
+  {
+    int index = threadMessages.indexWhere((msg) => msg.id == messageId);
+
+    if (index == -1) {
+      return; // Message not found
+    }
+
+    try {
+      if (reactionEvent.reaction == null) {
+        debugPrint("Reaction is null in ReactionEvent");
+        return;
+      }
+
+      // Extract the Reaction object from the event
+      Reaction reaction = reactionEvent.reaction!;
+
+      // Update the message with the latest reaction info
+      BaseMessage? updatedMessage =
+      await CometChatHelper.updateMessageWithReactionInfo(
+        threadMessages[index], // Existing message
+        reaction, // Extracted reaction object
+        isAddReaction
+            ? ReactionAction.reactionAdded
+            : ReactionAction
+            .reactionRemoved, // REACTION_ADDED or REACTION_REMOVED
+      );
+
+      if (updatedMessage != null) {
+        debugPrint("🔄 Updated message received: ${updatedMessage.toJson()}");
+
+        setState(() {
+          threadMessages[index] = updatedMessage;
+        });
+      }
+    } catch (e) {
+      debugPrint("Error updating message reactions: $e");
     }
   }
 
@@ -1043,53 +1108,30 @@ class TextMessageWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       margin: EdgeInsets.symmetric(vertical: 5, horizontal: 10),
-      child: Align(
-        alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-        child: Container(
-          padding: EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: isMe ? Colors.teal.shade800 : Colors.grey.shade300,
-            borderRadius:
-            isMe
-                ? BorderRadius.only(
-              topLeft: Radius.circular(10),
-              topRight: Radius.circular(10),
-              bottomLeft: Radius.circular(10),
-              bottomRight: Radius.zero,
-            )
-                : BorderRadius.only(
-              topLeft: Radius.circular(10),
-              topRight: Radius.circular(10),
-              bottomLeft: Radius.zero,
-              bottomRight: Radius.circular(10),
-            ),
-          ),
-          child: Column(
-            children: [
-              // if (isGroupChat && !isMe)
-              //   Row(
-              //     mainAxisSize: MainAxisSize.min,
-              //     children: [
-              //       CircleAvatar(
-              //         radius: 10,
-              //         backgroundImage:
-              //             message.sender?.avatar != null
-              //                 ? NetworkImage(message.sender!.avatar!)
-              //                 : null,
-              //         backgroundColor: Colors.teal,
-              //         child:
-              //             message.sender?.avatar == null
-              //                 ? Icon(Icons.person, color: Colors.white)
-              //                 : null,
-              //       ),
-              //       SizedBox(width: 10),
-              //       Text(
-              //         message.sender?.name ?? "Unknown",
-              //         style: TextStyle(fontSize: 14),
-              //       ),
-              //     ],
-              //   ),
-              Column(
+      child: Column(
+        children: [
+          Align(
+            alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+            child: Container(
+              padding: EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: isMe ? Colors.teal.shade800 : Colors.grey.shade300,
+                borderRadius:
+                isMe
+                    ? BorderRadius.only(
+                  topLeft: Radius.circular(10),
+                  topRight: Radius.circular(10),
+                  bottomLeft: Radius.circular(10),
+                  bottomRight: Radius.zero,
+                )
+                    : BorderRadius.only(
+                  topLeft: Radius.circular(10),
+                  topRight: Radius.circular(10),
+                  bottomLeft: Radius.zero,
+                  bottomRight: Radius.circular(10),
+                ),
+              ),
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(
@@ -1116,11 +1158,64 @@ class TextMessageWidget extends StatelessWidget {
                     ],
                   ),
                   SizedBox(height: 2),
+
                 ],
               ),
-            ],
+            ),
           ),
-        ),
+          if (message.reactions.isNotEmpty)
+            Align(
+              alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+              child: Container(
+                padding: EdgeInsets.all(1),
+                decoration: BoxDecoration(
+                  color: isMe ? Colors.teal.shade800 : Colors.grey.shade300,
+                  borderRadius:
+                  isMe
+                      ? BorderRadius.only(
+                    topLeft: Radius.circular(10),
+                    topRight: Radius.zero,
+                    bottomLeft: Radius.circular(10),
+                    bottomRight: Radius.zero,
+                  )
+                      : BorderRadius.only(
+                    topLeft: Radius.zero,
+                    topRight: Radius.circular(10),
+                    bottomLeft: Radius.zero,
+                    bottomRight: Radius.circular(10),
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+
+                  children:
+                  message.reactions.map((reactionCount) {
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                      child: Row(
+                        children: [
+                          Text(
+                            reactionCount.reaction!,
+                            style: TextStyle(fontSize: 20),
+                          ),
+                          isGroupChat ? SizedBox(width: 4) : SizedBox(),
+                          isGroupChat
+                              ? Text(
+                            "${reactionCount.count}",
+                            style: TextStyle(
+                              fontSize: 16,
+                              color: Colors.white70,
+                            ),
+                          )
+                              : SizedBox(),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }

@@ -5,13 +5,16 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:cometchat_sdk/cometchat_sdk.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart' hide Action;
+import 'package:my_first_app/screens/calling/ongoingCallScreen.dart';
 import 'package:my_first_app/screens/calling/outgoingCallScreen.dart';
 import 'package:my_first_app/screens/groupDetailsScreen.dart';
 import 'package:my_first_app/screens/threadScreen.dart';
 import 'package:my_first_app/screens/videoPlayerScreen.dart';
 import 'package:cometchat_calls_sdk/cometchat_calls_sdk.dart';
+import 'package:uuid/uuid.dart';
 
 import '../listeners/groupMembersListener.dart';
+import '../listeners/defaultCallEventListener.dart';
 
 class Chatscreen extends StatefulWidget {
   const Chatscreen({
@@ -655,6 +658,106 @@ class _ChatscreenState extends State<Chatscreen> {
     );
   }
 
+  String generateSessionId() {
+    var uuid = Uuid();
+    return uuid.v4(); // Generates a unique session ID
+  }
+
+  void groupCalling(
+    String receiverUid,
+    String receiverType,
+    bool isAudioCall,
+  ) async {
+    String sessionId = generateSessionId();
+    String? userAuthToken =
+        await CometChat.getUserAuthToken(); //Logged in user auth token
+
+    CometChatCalls.generateToken(
+      sessionId,
+      userAuthToken!,
+      onSuccess: (GenerateToken generateToken) {
+        debugPrint("Direct call Token generated: ${generateToken.token}");
+        DefaultCallEventListener ongoingCallEventListener =
+            DefaultCallEventListener(
+              sessionId: sessionId,
+              isDefaultCall: false,
+            );
+        CallSettings callSettings =
+            (CallSettingsBuilder()
+                  ..enableDefaultLayout = true
+                  ..setAudioOnlyCall = isAudioCall
+                  ..showSwitchToVideoCallButton = true
+                  ..listener =
+                      ongoingCallEventListener //CometChatCallsEventsListener
+                      )
+                .build();
+
+        CometChatCalls.startSession(
+          generateToken.token!,
+          callSettings,
+          onSuccess: (Widget? callingWidget) {
+            debugPrint("Success");
+            sendCustomCallMessage(receiverUid, receiverType, sessionId,isAudioCall);
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder:
+                    (context) => OngoingCallScreen(
+                      callingWidget: callingWidget,
+                      sessionId: sessionId,
+                      isDefaultCall: false,
+                    ),
+              ),
+            );
+          },
+          onError: (CometChatCallsException e) {
+            debugPrint("Error: $e");
+          },
+        );
+      },
+      onError: (CometChatCallsException e) {
+        debugPrint("Error: $e");
+      },
+    );
+  }
+
+  // Function to send a custom call message
+  void sendCustomCallMessage(
+    String receiverUid,
+    String receiverType,
+    String sessionId,
+      bool isAudioCall,
+  ) {
+    Map<String, dynamic> customData = {
+      "sessionId": sessionId,
+      "callType": "direct",
+      "message": "Started a call",
+      "isAudioCall": isAudioCall,
+    };
+
+    debugPrint("GROUP CALL TYPE: $isAudioCall");
+
+    CustomMessage customMessage = CustomMessage(
+      receiverUid: receiverUid,
+      receiverType: receiverType,
+      customData: customData,
+      type: "call",
+    );
+
+    CometChat.sendCustomMessage(
+      customMessage,
+      onSuccess: (CustomMessage message) {
+        debugPrint("Custom Call Message Sent: ${message.customData}");
+        setState(() {
+          messages.insert(0, message);
+        });
+      },
+      onError: (CometChatException e) {
+        debugPrint("Failed to send custom call message: ${e.message}");
+      },
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -727,6 +830,12 @@ class _ChatscreenState extends State<Chatscreen> {
               markMessagesAsRead([message]);
             }
           }
+        },
+        onNewCustomMessage: (CustomMessage customMessage) {
+          setState(() {
+            messages.insert(0, customMessage);
+          });
+          markMessagesAsRead([customMessage]);
         },
         onMessageDelivered: (int messageId) {
           debugPrint("Updating delivered status for message ID: $messageId");
@@ -1029,39 +1138,57 @@ class _ChatscreenState extends State<Chatscreen> {
         ),
         actions: [
           IconButton(
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder:
-                      (context) => OutgoingCallScreen(
-                        conversation: widget.conversation,
-                        callType: "audio",
-                      ),
-                ),
-              ).then((_) {
-                fetchMessages();
-                fetchUserPresence();
-              });
-            },
+            onPressed:
+                (widget.conversation.conversationWith is User)
+                    ? () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder:
+                              (context) => OutgoingCallScreen(
+                                conversation: widget.conversation,
+                                callType: "audio",
+                              ),
+                        ),
+                      ).then((_) {
+                        fetchMessages();
+                        fetchUserPresence();
+                      });
+                    }
+                    : () {
+                      groupCalling(
+                        (widget.conversation.conversationWith as Group).guid,
+                        CometChatReceiverType.group,
+                        true,
+                      );
+                    },
             icon: Icon(Icons.call, color: Colors.white),
           ),
           IconButton(
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder:
-                      (context) => OutgoingCallScreen(
-                        conversation: widget.conversation,
-                        callType: "video",
-                      ),
-                ),
-              ).then((_) {
-                fetchMessages();
-                fetchUserPresence();
-              });
-            },
+            onPressed:
+                (widget.conversation.conversationWith is User)
+                    ? () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder:
+                              (context) => OutgoingCallScreen(
+                                conversation: widget.conversation,
+                                callType: "video",
+                              ),
+                        ),
+                      ).then((_) {
+                        fetchMessages();
+                        fetchUserPresence();
+                      });
+                    }
+                    : () {
+                      groupCalling(
+                        (widget.conversation.conversationWith as Group).guid,
+                        CometChatReceiverType.group,
+                        false,
+                      );
+                    },
             icon: Icon(Icons.video_call_rounded, color: Colors.white),
           ),
         ],
@@ -1205,6 +1332,25 @@ class _ChatscreenState extends State<Chatscreen> {
                                 callType: message.type,
                                 formattedTimestamp: formatTimestamp(
                                   message.initiatedAt!,
+                                ),
+                              );
+                            }
+                            if (message is CustomMessage) {
+                              // Extract custom data
+                              Map<String, dynamic> customData =
+                                  message.customData ?? {};
+                              String sessionId = customData["sessionId"] ?? "";
+                              String messageType = customData["message"] ?? "";
+
+                              return CustomCallMessageWidget(
+                                isMe: isMe,
+                                isGroupChat: isGroupChat,
+                                message: message,
+                                formattedTimestamp: formatTimestamp(
+                                  message.sentAt!,
+                                ),
+                                getMessageStatusIcon: getMessageStatusIcon(
+                                  message,
                                 ),
                               );
                             }
@@ -1462,6 +1608,296 @@ class TextMessageWidget extends StatelessWidget {
                           isMe: isMe,
                           isGroupChat: isGroupChat,
                           formatedTimestamp: formatedTimestamp,
+                          getMessageStatusIcon: getMessageStatusIcon,
+                        ),
+                  ),
+                );
+              },
+              child: Align(
+                alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+                child: Row(
+                  mainAxisAlignment:
+                      isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+                  children: [
+                    Icon(Icons.reply_rounded),
+                    SizedBox(width: 5),
+                    message.replyCount > 1
+                        ? Text("${message.replyCount} Replies")
+                        : Text("${message.replyCount} Reply"),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class CustomCallMessageWidget extends StatelessWidget {
+  const CustomCallMessageWidget({
+    super.key,
+    required this.isMe,
+    required this.isGroupChat,
+    required this.message,
+    required this.formattedTimestamp,
+    required this.getMessageStatusIcon,
+  });
+
+  final bool isMe;
+  final bool isGroupChat;
+  final CustomMessage message;
+  final String formattedTimestamp;
+  final Widget getMessageStatusIcon;
+
+  void joinOngoingGroupCall(String sessionId, BuildContext context,bool isAudioCall) async {
+    String? userAuthToken = await CometChat.getUserAuthToken();
+    if (userAuthToken == null) {
+      debugPrint("User auth token is null.");
+      return;
+    }
+
+    CometChatCalls.generateToken(
+      sessionId,
+      userAuthToken,
+      onSuccess: (GenerateToken generateToken) {
+        CallSettings callSettings =
+            (CallSettingsBuilder()
+                  ..enableDefaultLayout = true
+                  ..setAudioOnlyCall = isAudioCall
+                  ..showSwitchToVideoCallButton = true
+                  ..listener = DefaultCallEventListener(
+                    sessionId: sessionId,
+                    isDefaultCall: false,
+                  ))
+                .build();
+
+        CometChatCalls.startSession(
+          generateToken.token!,
+          callSettings,
+          onSuccess: (Widget? callingWidget) {
+            debugPrint("Joining Group Call...");
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder:
+                    (context) => OngoingCallScreen(
+                      callingWidget: callingWidget,
+                      sessionId: sessionId,
+                      isDefaultCall: false,
+                    ),
+              ),
+            );
+          },
+          onError: (CometChatCallsException e) {
+            debugPrint("Error: $e");
+          },
+        );
+      },
+      onError: (CometChatCallsException e) {
+        debugPrint("Error generating token: $e");
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: EdgeInsets.symmetric(vertical: 5, horizontal: 10),
+      child: Column(
+        children: [
+          Align(
+            alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+            child: Column(
+              mainAxisAlignment:
+                  isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+              crossAxisAlignment:
+                  isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+              children: [
+                if (isGroupChat && !isMe)
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CircleAvatar(
+                        radius: 10,
+                        backgroundImage:
+                            message.sender?.avatar != null
+                                ? NetworkImage(message.sender!.avatar!)
+                                : null,
+                        backgroundColor: Colors.teal,
+                        child:
+                            message.sender?.avatar == null
+                                ? Icon(Icons.person, color: Colors.white)
+                                : null,
+                      ),
+                      SizedBox(width: 5),
+                      Text(
+                        message.sender?.name.split(" ").first ?? "Unknown",
+                        style: TextStyle(fontSize: 14),
+                      ),
+                    ],
+                  ),
+                Container(
+                  padding: EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: isMe ? Colors.teal.shade800 : Colors.grey.shade300,
+                    borderRadius:
+                        isMe
+                            ? BorderRadius.only(
+                              topLeft: Radius.circular(10),
+                              topRight: Radius.circular(10),
+                              bottomLeft: Radius.circular(10),
+                              bottomRight: Radius.zero,
+                            )
+                            : BorderRadius.only(
+                              topLeft: Radius.circular(10),
+                              topRight: Radius.circular(10),
+                              bottomLeft: Radius.zero,
+                              bottomRight: Radius.circular(10),
+                            ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Container(
+                        decoration: BoxDecoration(
+                          color: isMe ? Colors.teal.shade700 : Colors.white30,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        padding: EdgeInsets.all(10),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.start,
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              message.customData!["message"],
+                              style: TextStyle(
+                                fontSize: 19,
+                                color: isMe ? Colors.white : Colors.black,
+                              ),
+                            ),
+                            SizedBox(height: 5),
+                            InkWell(
+                              onTap: () {
+                                joinOngoingGroupCall(
+                                  message.customData!['sessionId'],
+                                  context,message.customData!['isAudioCall']
+                                );
+                              },
+                              child: Container(
+                                padding: EdgeInsets.symmetric(
+                                  vertical: 10,
+                                  horizontal: 15,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.green,
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.call_rounded,
+                                      color: Colors.white,
+                                    ),
+                                    SizedBox(width: 6),
+                                    Text(
+                                      "Join Call",
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      SizedBox(height: 5),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            formattedTimestamp,
+                            style: TextStyle(fontSize: 12, color: Colors.grey),
+                          ),
+                          SizedBox(width: 5),
+                          isMe ? getMessageStatusIcon : SizedBox(),
+                        ],
+                      ),
+                      SizedBox(height: 2),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (message.reactions.isNotEmpty)
+            Align(
+              alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+              child: Container(
+                padding: EdgeInsets.all(1),
+                decoration: BoxDecoration(
+                  color: isMe ? Colors.teal.shade800 : Colors.grey.shade300,
+                  borderRadius:
+                      isMe
+                          ? BorderRadius.only(
+                            topLeft: Radius.circular(10),
+                            topRight: Radius.zero,
+                            bottomLeft: Radius.circular(10),
+                            bottomRight: Radius.zero,
+                          )
+                          : BorderRadius.only(
+                            topLeft: Radius.zero,
+                            topRight: Radius.circular(10),
+                            bottomLeft: Radius.zero,
+                            bottomRight: Radius.circular(10),
+                          ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+
+                  children:
+                      message.reactions.map((reactionCount) {
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                          child: Row(
+                            children: [
+                              Text(
+                                reactionCount.reaction!,
+                                style: TextStyle(fontSize: 20),
+                              ),
+                              isGroupChat ? SizedBox(width: 4) : SizedBox(),
+                              isGroupChat
+                                  ? Text(
+                                    "${reactionCount.count}",
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      color: Colors.white70,
+                                    ),
+                                  )
+                                  : SizedBox(),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                ),
+              ),
+            ),
+          if (message.replyCount > 0)
+            InkWell(
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder:
+                        (context) => ThreadScreen(
+                          parentMessage: message,
+                          isMe: isMe,
+                          isGroupChat: isGroupChat,
+                          formatedTimestamp: formattedTimestamp,
                           getMessageStatusIcon: getMessageStatusIcon,
                         ),
                   ),
@@ -1948,6 +2384,7 @@ class _MediaMessageWidgetState extends State<MediaMessageWidget> {
 class ChatMessageListener with MessageListener {
   final Function(TextMessage) onNewTextMessage;
   final Function(MediaMessage) onNewMediaMessage;
+  final Function(CustomMessage) onNewCustomMessage;
   final Function(int messageId) onMessageRead;
   final Function(int messageId) onMessageDelivered;
   final Function(TypingIndicator) onTypingStartedFunc;
@@ -1960,6 +2397,7 @@ class ChatMessageListener with MessageListener {
   ChatMessageListener({
     required this.onNewTextMessage,
     required this.onNewMediaMessage,
+    required this.onNewCustomMessage,
     required this.onMessageRead,
     required this.onMessageDelivered,
     required this.onTypingStartedFunc,
@@ -1986,6 +2424,7 @@ class ChatMessageListener with MessageListener {
   @override
   void onCustomMessageReceived(CustomMessage customMessage) {
     debugPrint("Custom message received successfully: $customMessage");
+    onNewCustomMessage(customMessage);
   }
 
   @override

@@ -481,7 +481,10 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                                         )
                                         : null,
                               ),
-                              title: Text(user.name,style: TextStyle(color: Colors.white),),
+                              title: Text(
+                                user.name,
+                                style: TextStyle(color: Colors.white),
+                              ),
                               trailing: InkWell(
                                 onTap: () {
                                   Navigator.pop(context);
@@ -492,12 +495,18 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                                   );
                                 },
                                 child: Container(
-                                  padding: EdgeInsets.symmetric(vertical: 5,horizontal: 10),
+                                  padding: EdgeInsets.symmetric(
+                                    vertical: 5,
+                                    horizontal: 10,
+                                  ),
                                   decoration: BoxDecoration(
                                     color: Colors.white,
                                     borderRadius: BorderRadius.circular(10),
                                   ),
-                                  child: Text("Add",style: TextStyle(color: Colors.black),),
+                                  child: Text(
+                                    "Add",
+                                    style: TextStyle(color: Colors.black),
+                                  ),
                                 ),
                               ),
                             ),
@@ -583,12 +592,12 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: Colors.teal.shade900,
         leading: IconButton(
           onPressed: () {
             Navigator.pop(context);
           },
-          color: Colors.black,
+          color: Colors.white,
           icon: Icon(Icons.arrow_back),
         ),
       ),
@@ -597,7 +606,7 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
           Container(
             width: double.infinity,
             padding: EdgeInsets.all(16),
-            decoration: BoxDecoration(color: Colors.white),
+            decoration: BoxDecoration(color: Colors.teal.shade900),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
@@ -615,10 +624,10 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                 SizedBox(height: 10),
                 Text(
                   widget.group.name,
-                  style: TextStyle(fontSize: 25, fontWeight: FontWeight.w600),
+                  style: TextStyle(fontSize: 25, fontWeight: FontWeight.w600,color: Colors.white),
                 ),
                 SizedBox(height: 5),
-                Text("Group - ${groupMemberList.length} participants"),
+                Text("Group - ${groupMemberList.length} participants",style: TextStyle(color: Colors.white),),
                 SizedBox(height: 20),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -715,9 +724,10 @@ class _GroupDetailsScreenState extends State<GroupDetailsScreen> {
                           Row(
                             children: [
                               CircleAvatar(
-                                backgroundImage: groupMember.avatar != null?NetworkImage(
-                                  groupMember.avatar!,
-                                ):null,
+                                backgroundImage:
+                                    groupMember.avatar != null
+                                        ? NetworkImage(groupMember.avatar!)
+                                        : null,
                               ),
                               SizedBox(width: 10),
                               Text(

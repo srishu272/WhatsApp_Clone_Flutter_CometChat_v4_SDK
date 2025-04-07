@@ -3,12 +3,12 @@ import 'package:cometchat_calls_sdk/cometchat_calls_sdk.dart';
 import 'package:flutter/material.dart';
 import 'package:my_first_app/main.dart';
 
-class OngoingCallEventListener with CometChatCallsEventsListener {
+class DefaultCallEventListener with CometChatCallsEventsListener {
   final String sessionId;
   final bool isDefaultCall;
   bool isCallEndedByMe = false;
 
-  OngoingCallEventListener({required this.sessionId, required this.isDefaultCall});
+  DefaultCallEventListener({required this.sessionId, required this.isDefaultCall});
 
 
   @override

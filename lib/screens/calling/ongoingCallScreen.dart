@@ -1,19 +1,18 @@
 import 'package:cometchat_calls_sdk/main/cometchatcalls.dart';
 import 'package:cometchat_sdk/main/cometchat.dart';
 import 'package:flutter/material.dart';
-import 'package:my_first_app/listeners/ongoingCallEventListener.dart';
+import 'package:my_first_app/listeners/defaultCallEventListener.dart';
 
 class OngoingCallScreen extends StatefulWidget {
   final Widget? callingWidget;
   final String sessionId;
-  final bool isCaller;
   final bool isDefaultCall;
 
   const OngoingCallScreen({
     super.key,
     required this.callingWidget,
     required this.sessionId,
-    required this.isCaller,
+
     required this.isDefaultCall,
   });
 
@@ -27,7 +26,7 @@ class _OngoingCallScreenState extends State<OngoingCallScreen> {
     super.initState();
     CometChatCalls.addCallsEventListeners(
       "ONGOING_CALL_LISTENER",
-      OngoingCallEventListener(sessionId: widget.sessionId,isDefaultCall: widget.isDefaultCall),
+      DefaultCallEventListener(sessionId: widget.sessionId,isDefaultCall: widget.isDefaultCall),
     );
   }
 

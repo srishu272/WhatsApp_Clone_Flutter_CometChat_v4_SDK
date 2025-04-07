@@ -6,12 +6,16 @@ class ThreadMessageListener with MessageListener {
   final Function(BaseMessage) onMessageReceived;
   final Function(BaseMessage) onMessageEditedFunc;
   final Function(BaseMessage) onMessageDeletedFunc;
+  final Function(ReactionEvent) onMessageReactionAddedFunc;
+  final Function(ReactionEvent) onMessageReactionRemovalFunc;
 
   ThreadMessageListener({
     required this.activeParentMessageId,
     required this.onMessageReceived,
     required this.onMessageEditedFunc,
     required this.onMessageDeletedFunc,
+    required this.onMessageReactionAddedFunc,
+    required this.onMessageReactionRemovalFunc,
   });
 
   @override
@@ -54,4 +58,16 @@ class ThreadMessageListener with MessageListener {
     }
 
   }
+
+  @override
+  void onMessageReactionAdded(ReactionEvent reactionEvent) {
+
+  }
+
+  @override
+  void onMessageReactionRemoved(ReactionEvent reactionEvent) {
+    onMessageReactionRemovalFunc(reactionEvent);
+  }
+
+
 }

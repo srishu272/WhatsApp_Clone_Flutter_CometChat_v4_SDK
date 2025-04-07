@@ -16,7 +16,7 @@ import 'package:my_first_app/screens/loginScreen.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../listeners/groupMembersListener.dart';
-import '../listeners/ongoingCallEventListener.dart';
+import '../listeners/defaultCallEventListener.dart';
 import 'calling/ongoingCallScreen.dart';
 
 class Homescreen extends StatefulWidget {
@@ -107,20 +107,23 @@ class _HomescreenState extends State<Homescreen> {
         if (message.receiverType == CometChatReceiverType.user) {
           // Direct Chat
           if (conversation.conversationWith is User &&
-              (conversation.conversationWith as User).uid == message.receiverUid) {
+              (conversation.conversationWith as User).uid ==
+                  message.receiverUid) {
             isRelatedConversation = true;
           }
         } else if (message.receiverType == CometChatReceiverType.group) {
           // Group Chat
           if (conversation.conversationWith is Group &&
-              (conversation.conversationWith as Group).guid == message.receiverUid) {
+              (conversation.conversationWith as Group).guid ==
+                  message.receiverUid) {
             isRelatedConversation = true;
           }
         }
 
         if (isRelatedConversation) {
           // Update last message only if it belongs to the correct conversation
-          if (conversation.lastMessage?.id == message.id || conversation.lastMessage == null) {
+          if (conversation.lastMessage?.id == message.id ||
+              conversation.lastMessage == null) {
             conversation.lastMessage = message;
           }
           break;
@@ -128,7 +131,6 @@ class _HomescreenState extends State<Homescreen> {
       }
     });
   }
-
 
   void logout() {
     CometChat.logout(
@@ -278,7 +280,8 @@ class _HomescreenState extends State<Homescreen> {
                 String conversationId = typingIndicator.receiverId;
 
                 //   // Group chat - show "<User> is typing..." for that group
-                  typingUsers[conversationId] = "${typingIndicator.sender.name} is typing...";
+                typingUsers[conversationId] =
+                    "${typingIndicator.sender.name} is typing...";
               }
             });
             debugPrint("✅ Updated typingUsers Map: $typingUsers");
@@ -289,12 +292,11 @@ class _HomescreenState extends State<Homescreen> {
           if (mounted) {
             setState(() {
               String conversationId = "";
-              if(typingIndicator.receiverType == CometChatReceiverType.user){
+              if (typingIndicator.receiverType == CometChatReceiverType.user) {
                 conversationId = typingIndicator.sender.uid;
-              }
-              else if (typingIndicator.receiverType == CometChatReceiverType.group){
+              } else if (typingIndicator.receiverType ==
+                  CometChatReceiverType.group) {
                 conversationId = typingIndicator.receiverId;
-
               }
               typingUsers.remove(conversationId);
             });
@@ -370,8 +372,8 @@ class _HomescreenState extends State<Homescreen> {
               userAuthToken!,
               onSuccess: (GenerateToken generateToken) {
                 debugPrint("Success generate token: ${generateToken.token}");
-                OngoingCallEventListener ongoingCallEventListener =
-                    OngoingCallEventListener(
+                DefaultCallEventListener ongoingCallEventListener =
+                    DefaultCallEventListener(
                       sessionId: call.sessionId!,
                       isDefaultCall:
                           call.receiverType == CometChatReceiverType.user,
@@ -395,7 +397,6 @@ class _HomescreenState extends State<Homescreen> {
                             (context) => OngoingCallScreen(
                               callingWidget: callingWidget,
                               sessionId: call.sessionId!,
-                              isCaller: true,
                               isDefaultCall:
                                   call.receiverType ==
                                           CometChatReceiverType.user
@@ -688,8 +689,8 @@ class _HomescreenState extends State<Homescreen> {
                   subtitle: Text(
                     typingUsers[conversation.conversationWith is User
                             ? (conversation.conversationWith as User).uid
-                            : (conversation.conversationWith as Group).guid]
-                        ?? getLastMessage(conversation.lastMessage),
+                            : (conversation.conversationWith as Group).guid] ??
+                        getLastMessage(conversation.lastMessage),
                     style: TextStyle(
                       fontSize: 16,
                       color:
@@ -722,7 +723,9 @@ class _HomescreenState extends State<Homescreen> {
                           )
                           : SizedBox(),
                       Text(
-                        formatTimestamp(conversation.lastMessage!.sentAt!),
+                        conversation.lastMessage != null
+                            ? formatTimestamp(conversation.lastMessage!.sentAt!)
+                            : " ",
                         style: TextStyle(color: Colors.grey, fontSize: 13),
                       ),
                     ],
