@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1015109380874",
+    "project_id": "the-first-cometchat-app",
+    "storage_bucket": "the-first-cometchat-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1015109380874:android:c0778d2ff5a716cde0a8f3",
+        "android_client_info": {
+          "package_name": "com.example.my_first_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDqEgIK8QxrnupOOqhMj8R9HJYrd2KSTx8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

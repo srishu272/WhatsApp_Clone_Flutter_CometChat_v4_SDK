@@ -987,6 +987,7 @@ class _ChatscreenState extends State<Chatscreen> {
 
   @override
   Widget build(BuildContext context) {
+
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.teal.shade900,
@@ -1770,7 +1771,7 @@ class CustomCallMessageWidget extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
                             Text(
-                              message.customData!["message"],
+                              message.customData!["message"]??"",
                               style: TextStyle(
                                 fontSize: 19,
                                 color: isMe ? Colors.white : Colors.black,
@@ -2411,7 +2412,7 @@ class ChatMessageListener with MessageListener {
   //CometChat.addMessageListener("listenerId", this);
   @override
   void onTextMessageReceived(TextMessage textMessage) {
-    debugPrint("Text message received successfully: $textMessage");
+    debugPrint("Text message received successfully1111: $textMessage");
     onNewTextMessage(textMessage);
   }
 

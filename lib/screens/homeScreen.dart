@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:app_badge_plus/app_badge_plus.dart';
 import 'package:cometchat_calls_sdk/builder/call_settings.dart';
 import 'package:cometchat_calls_sdk/helper/cometchatcalls_exception.dart';
 import 'package:cometchat_calls_sdk/main/cometchatcalls.dart';
@@ -36,27 +37,52 @@ class _HomescreenState extends State<Homescreen> {
   bool isCallScreenOpen = false;
   bool isCallSessionStarted = false;
 
-  Future<void> requestCallPermissions() async {
+  Future<void> requestPermissions() async {
+    // Request Microphone and Camera Permissions
     Map<Permission, PermissionStatus> statuses =
         await [Permission.microphone, Permission.camera].request();
 
+    // Check and handle microphone and camera permissions
     if (statuses[Permission.microphone]!.isGranted &&
         statuses[Permission.camera]!.isGranted) {
       debugPrint("Microphone & Camera permissions granted");
     } else {
-      debugPrint("Permissions not granted");
-      // showPermissionDeniedMessage();
+      debugPrint("Permissions not granted for Microphone or Camera");
+      // Optionally show a message prompting the user to grant permissions
     }
 
+    // Handle permanently denied permissions
     if (statuses[Permission.microphone]!.isPermanentlyDenied ||
         statuses[Permission.camera]!.isPermanentlyDenied) {
       debugPrint("Microphone or Camera permission permanently denied");
       openAppSettings(); // Redirect user to app settings if permanently denied
     }
+
+    // Request Notification Permission (iOS)
+    if (await Permission.notification.isDenied) {
+      await Permission.notification.request();
+    }
+
+    // Handle permanently denied notification permission
+    if (await Permission.notification.isPermanentlyDenied) {
+      debugPrint("Notification permission permanently denied");
+      openAppSettings();
+    }
+
+    // Request other permissions like external storage if needed
+    if (await Permission.manageExternalStorage.isDenied) {
+      await Permission.manageExternalStorage.request();
+    }
+
+    // Optionally handle other permissions like Phone or Location
+    // if (await Permission.phone.isDenied) {
+    //   await Permission.phone.request();
+    // }
   }
 
   Future<void> fetchConversations() async {
-    ConversationsRequest request = ConversationsRequestBuilder().build();
+    ConversationsRequest request =
+        (ConversationsRequestBuilder()..limit = 50).build();
 
     request.fetchNext(
       onSuccess: (List<Conversation> fetchedConversations) async {
@@ -65,6 +91,13 @@ class _HomescreenState extends State<Homescreen> {
             fetchedConversations
                 .where((conv) => conv.conversationWith is User)
                 .map((conv) => (conv.conversationWith as User).uid)
+                .toList();
+
+        print("Fetched Conversations: $fetchedConversations");
+        List<String> groupIds =
+            fetchedConversations
+                .where((conv) => conv.conversationWith is Group)
+                .map((conv) => (conv.conversationWith as Group).guid)
                 .toList();
 
         // Create a temporary map to store fetched user statuses
@@ -248,7 +281,7 @@ class _HomescreenState extends State<Homescreen> {
   @override
   void initState() {
     super.initState();
-    requestCallPermissions();
+    requestPermissions();
 
     fetchUser();
     fetchConversations();
@@ -360,6 +393,7 @@ class _HomescreenState extends State<Homescreen> {
           //     isDefaultCall: call.receiverType == CometChatReceiverType.user,
           //   ),
           // );
+          debugPrint("onOutgoingCallAcceptedFunc");
 
           if (!isCallSessionStarted) {
             isCallSessionStarted = true;
@@ -419,6 +453,82 @@ class _HomescreenState extends State<Homescreen> {
             );
           }
         },
+        /*onOutgoingCallAcceptedFunc: (Call call) async {
+            // CometChatCalls.addCallsEventListeners(
+            //   "ONGOING_CALL_LISTENER",
+            //   OngoingCallEventListener(
+            //     sessionId: call.sessionId!,
+            //     isDefaultCall: call.receiverType == CometChatReceiverType.user,
+            //   ),
+            // );
+
+            debugPrint("Call accepted by the user: ${call.sender}");
+            debugPrint("LoggedIn User: $loggedInUser");
+
+            if(call.sender?.uid != loggedInUser?.uid){
+              if (!isCallSessionStarted) {
+                isCallSessionStarted = true;
+
+                String? userAuthToken =
+                await CometChat.getUserAuthToken(); //Logged in user auth token
+
+                CometChatCalls.generateToken(
+                  call.sessionId!,
+                  userAuthToken!,
+                  onSuccess: (GenerateToken generateToken) {
+                    debugPrint("Success generate token: ${generateToken.token}");
+                    DefaultCallEventListener ongoingCallEventListener =
+                    DefaultCallEventListener(
+                      sessionId: call.sessionId!,
+                      isDefaultCall:
+                      call.receiverType == CometChatReceiverType.user,
+                    );
+                    CallSettings callSettings =
+                    (CallSettingsBuilder()
+                    // ..defaultLayout = true
+                      ..setAudioOnlyCall =
+                      call.type == "audio" ? true : false
+                      ..listener = ongoingCallEventListener)
+                        .build();
+
+                    CometChatCalls.startSession(
+                      generateToken.token!,
+                      callSettings,
+                      onSuccess: (Widget? callingWidget) {
+                        debugPrint("Success Start Session");
+                        Navigator.of(context).pushReplacement(
+                          MaterialPageRoute(
+                            builder:
+                                (context) => OngoingCallScreen(
+                              callingWidget: callingWidget,
+                              sessionId: call.sessionId!,
+                              isDefaultCall:
+                              call.receiverType ==
+                                  CometChatReceiverType.user
+                                  ? true
+                                  : false,
+                            ),
+                          ),
+                        );
+                      },
+                      onError: (CometChatCallsException e) {
+                        debugPrint("Error: $e");
+                        isCallSessionStarted = false;
+                      },
+                    );
+                  },
+                  onError: (CometChatCallsException e) {
+                    debugPrint("Error: $e");
+                    isCallSessionStarted = false;
+                  },
+                );
+              }
+              debugPrint("Call accepted by the non 111111  logged-in user, no need to start session");
+            }else{
+              Navigator.pop(context);
+              debugPrint("Call accepted by the logged-in user, no need to start session");
+            }
+          },*/
         onOutgoingCallRejectedFunc: (Call call) {
           debugPrint("Call rejected");
           Navigator.pop(context);
